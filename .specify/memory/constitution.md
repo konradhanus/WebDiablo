@@ -1,16 +1,22 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: (template) → 1.0.0
-Rationale: Initial ratification of the WebDiablo constitution. MAJOR baseline (1.0.0)
-because this is the first concrete, binding version replacing the placeholder template.
+Version change: 1.0.0 → 1.1.0
+Rationale: MINOR bump — added a new binding principle (VI. Definition of Done / Green-to-Ship
+pipeline) and game-versioning + footer-version-bar rules. No principles removed or redefined.
 
-Principles defined (5):
+Principles defined (6):
   I.   Zero-Dependency, Single-File Delivery
   II.  Vanilla Web Platform Only
   III. Playtest-First Verification (NON-NEGOTIABLE)
   IV.  Performance Budget & 60 FPS Discipline
   V.   Data-Driven Content, Simple Code
+  VI.  Definition of Done — Green-to-Ship Pipeline (NON-NEGOTIABLE)  [added in 1.1.0]
+
+Added in 1.1.0:
+  - Principle VI: E2E + build + unit gate → bump → push → deploy
+  - Game semantic versioning rules (distinct from constitution version)
+  - Mandatory footer version bar with single GAME_VERSION source of truth
 
 Added sections:
   - Technology & Architecture Constraints
@@ -89,6 +95,40 @@ works (YAGNI); avoid speculative abstraction.
 Rationale: The existing design already expresses enemies and drops as data tables. Keeping
 content declarative makes balancing and expansion cheap and keeps the single file readable.
 
+### VI. Definition of Done — Green-to-Ship Pipeline (NON-NEGOTIABLE)
+
+Every completed feature MUST pass the full verification pipeline before it is considered
+done, and passing that pipeline MUST trigger a release. The exact, ordered gate is:
+
+1. **E2E test**: the feature is exercised end-to-end in a real (headless) browser and the
+   game loads with **zero uncaught console errors**.
+2. **Build check**: the build/validation step passes (HTML/JS structure validates, the game
+   boots, no missing DOM references).
+3. **Unit tests**: all unit tests pass (green).
+
+Only when **all three are green** MUST the following release actions run, in order:
+
+4. **Version bump**: increment the game version per semantic versioning (see below).
+5. **Push to Git**: commit and push to `origin/master`.
+6. **Publish**: deploy the new version to GitHub Pages and verify the live URL serves it.
+
+If any gate is red, the pipeline STOPS — no bump, no push, no deploy — until it is green.
+This gate may not be waived.
+
+Rationale: Automating "green means ship" removes human error from releases and guarantees
+that what is on the live URL always passed the full test suite. It makes every feature a
+verifiable, releasable unit.
+
+**Game versioning (semantic, MAJOR.MINOR.PATCH)** — the game version is distinct from this
+constitution's version:
+- **MAJOR**: backward-incompatible change to saves or core gameplay contract.
+- **MINOR**: a new player-facing feature.
+- **PATCH**: bug fix, balance tweak, or polish with no new feature.
+- The current game version MUST be displayed to the player as a **footer version bar** fixed
+  at the bottom of the screen (e.g. `WebDiablo v1.0.0`). There MUST be a single source of
+  truth for the version string (one `GAME_VERSION` constant) that both the footer and the
+  release process read.
+
 ## Technology & Architecture Constraints
 
 - **Language/Platform**: HTML5 + CSS + vanilla ES (no TypeScript build, no modules requiring
@@ -138,4 +178,4 @@ the exception.
   The playtest + zero-console-error gate (Principle III) is non-negotiable and may not be
   waived.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-17 | **Last Amended**: 2026-07-17
+**Version**: 1.1.0 | **Ratified**: 2026-07-17 | **Last Amended**: 2026-07-18
