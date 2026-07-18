@@ -75,6 +75,24 @@ try{
   check('trap triggers damage', await page.evaluate(()=>{ const g=window.game; const t=g.dungeon.interactables.find(i=>i.type==='trap'); if(!t)return true; const hp0=g.player.hp; g.player.invuln=0; g.player.x=t.x*2; g.player.z=t.y*2; g.update(0.05); return g.player.hp<hp0; }));
   check('secret reveal works', await page.evaluate(()=>{ const g=window.game; const s=g.dungeon.interactables.find(i=>i.type==='secret'); if(!s)return true; g.player.x=s.x*2; g.player.z=s.y*2; g.interactTile(); return s.revealed && g.dungeon.get(s.x,s.y)===1; }));
   check('potion use heals', await page.evaluate(()=>{ const g=window.game; g.player.hp=10; g.player.potions[0]=2; g.usePotion(0); return g.player.hp>10; }));
+  // ===== Faza 3: squad / achievements / minimap =====
+  check('recruit ally (Q)', await page.evaluate(()=>{ const g=window.game; const n0=g.squad.length; g.recruitAlly(); return g.squad.length>n0 && g.squad[0].mesh; }));
+  check('achievement unlocks', await page.evaluate(()=>{ const g=window.game; g.unlockAch('floor5'); return g.achievements['floor5']===true; }));
+  check('minimap renders without error', await page.evaluate(()=>{ const g=window.game; g.renderMinimap(); const cv=document.getElementById('minimap'); return cv && cv.width>0; }));
+  check('screen shake triggers', await page.evaluate(()=>{ const g=window.game; g.addShake(0.3); return g.shake>0; }));
+  // ===== Faza 4: follow-camera fix =====
+  check('camera follows player', await page.evaluate(async ()=>{ const g=window.game;
+    // move player far from origin, render, check camera tracks it
+    g.player.x=40; g.player.z=40; g.render();
+    const cx1=g.player.x+18, cz1=g.player.z+18;
+    const ok = Math.abs(g.camera.position.x-cx1)<2 && Math.abs(g.camera.position.z-cz1)<2;
+    g.player.x=-30; g.player.z=-20; g.render();
+    const ok2 = Math.abs(g.camera.position.x-(-30+18))<2 && Math.abs(g.camera.position.z-(-20+18))<2;
+    g.player.x=0; g.player.z=0; g.render();
+    return ok && ok2;
+  }));
+  check('zero errors during Faza4', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
+  check('zero errors during Faza3', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
   check('zero errors during content', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
   check('zero errors during combat', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
   check('zero errors during play', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));

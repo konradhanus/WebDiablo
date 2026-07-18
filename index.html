@@ -36,6 +36,11 @@
   #msg{position:absolute;top:64px;left:50%;transform:translateX(-50%);
     text-align:center;font-size:15px;color:#ffd96b;text-shadow:0 2px 4px #000;
     max-width:80%}
+  #minimap{position:absolute;top:10px;right:10px;width:150px;height:150px;
+    border-radius:8px;border:1px solid rgba(180,200,255,.25);
+    background:rgba(8,12,20,.6);backdrop-filter:blur(3px)}
+  #squadTag{position:absolute;bottom:50px;right:14px;font-size:12px;color:#9fd;
+    text-shadow:0 1px 2px #000;text-align:right}
   #versionBar{position:fixed;bottom:6px;right:10px;font-size:11px;
     color:#7a89a;z-index:11;pointer-events:none}
   /* Touch controls */
@@ -89,6 +94,8 @@
   </div>
   <div id="xp"><i id="xpFill"></i></div>
   <div id="msg"></div>
+  <canvas id="minimap" width="150" height="150"></canvas>
+  <div id="squadTag"></div>
 </div>
 <div id="touchUI">
   <div id="joy"><div id="joyKnob"></div></div>
@@ -119,10 +126,17 @@
   <button id="retryBtn">DESCEND AGAIN</button>
 </div>
 
+<!-- Achievements -->
+<div id="achievements" class="overlay hidden">
+  <h1 style="font-size:26px">ACHIEVEMENTS</h1>
+  <div id="achList" style="display:flex;flex-direction:column;gap:8px;max-width:440px;margin:10px"></div>
+  <button id="achClose">CLOSE</button>
+</div>
+
 <script type="module">
 import * as THREE from './vendor/three.module.js';
 
-const GAME_VERSION = '3.2.0';
+const GAME_VERSION = '3.3.1';
 
 // ====================== CONFIG ======================
 const TILE = 2.0;                 // world units per tile
@@ -399,6 +413,16 @@ class Game {
     this.meshes={}; this.enemies=[]; this.projectiles=[]; this.loot=[];
     this.particles=[]; this.floaters=[];
     this.ray=new THREE.Raycaster();
+    this.squad=[]; this.achievements={}; this.shake=0; this.gold=0;
+    this.camera=camera;
+    this.achDefs=[
+      {id:'first_blood',name:'First Blood',desc:'Slay your first foe'},
+      {id:'floor5',name:'The Deep',desc:'Reach Floor 5'},
+      {id:'boss',name:'Giant Slayer',desc:'Defeat a boss'},
+      {id:'floor10',name:'Abyssal',desc:'Reach Floor 10'},
+      {id:'lvl10',name:'Veteran',desc:'Reach Level 10'},
+      {id:'rich',name:'Treasure Hunter',desc:'Collect 200 gold'},
+    ];
     this.groundPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
     this.classes=[
       {id:'warrior',name:'Warrior',desc:'High HP & armor, brutal melee.',hp:140,mp:30,str:6,dex:3,int:2,dmg:14,def:6,color:0x4a7fd0},
@@ -573,6 +597,11 @@ class Game {
     if(this.keys['KeyE']){ this.keys['KeyE']=false; this.interactTile(); }
     // potions 1-5
     for(let i=1;i<=5;i++) if(this.keys['Digit'+i]){ this.keys['Digit'+i]=false; this.usePotion(i-1); }
+    // recruit ally (Q)
+    if(this.keys['KeyQ']){ this.keys['KeyQ']=false; this.recruitAlly(); }
+    // achievements checks
+    if(this.floor>=5)this.unlockAch('floor5'); if(this.floor>=10)this.unlockAch('floor10');
+    if(this.player.level>=10)this.unlockAch('lvl10'); if(this.gold>=200)this.unlockAch('rich');
     // trap trigger on player tile
     const ptx=Math.round(p.x/TILE), ptz=Math.round(p.z/TILE);
     for(const ib of this.dungeon.interactables){ if(ib.type==='trap'&&!ib.triggered&&ib.x===ptx&&ib.y===ptz){
@@ -584,6 +613,7 @@ class Game {
     this.updateParticles(dt);
     this.updateLoot(dt);
     this.pickupLoot();
+    this.updateSquad(dt);
     // stairs
     const tx=Math.round(p.x/TILE), tz=Math.round(p.z/TILE);
     if(this.dungeon.get(tx,tz)===T.STAIRS){ this.floor++; this.player.floor=this.floor; this.generateFloor();
@@ -641,6 +671,58 @@ class Game {
     p.potions[slot]--; p.hp=Math.min(p.maxHp,p.hp+(slot===0?60:30)); this.toast('Quaffed a potion');
     this.spawnParticles(p.x,p.z,0x44ff88,12);
   }
+  unlockAch(id){
+    if(this.achievements[id])return; this.achievements[id]=true;
+    const d=this.achDefs.find(a=>a.id===id); if(d){ this.toast('Achievement: '+d.name+'!'); this.spawnParticles(this.player.x,this.player.z,0xffd96b,20); }
+  }
+  recruitAlly(){
+    if(this.squad.length>=2){ this.toast('Squad full (2)'); return; }
+    const m=buildHumanoid({cloth:0x44d07f,trim:0xd0ffe0});
+    m.scale.setScalar(0.85); m.position.set(this.player.x-1,this.player.z,0); scene.add(m);
+    this.squad.push({mesh:m,x:this.player.x-1,z:this.player.z,hp:60,cd:0});
+    this.toast('An ally joins your cause!'); this.spawnParticles(this.player.x,this.player.z,0x44d07f,14);
+    this.unlockAch('first_blood'); // ally implies combat begun
+  }
+  updateSquad(dt){
+    const p=this.player;
+    for(const a of this.squad){
+      // follow player at offset, attack nearby enemies
+      let tx=p.x-1.4, tz=p.z+1.4;
+      // find nearest enemy
+      let near=null,nd=1e9; for(const e of this.enemies){ if(e.dead)continue; const d=Math.hypot(e.x-a.x,e.z-a.z); if(d<nd){nd=d;near=e;} }
+      if(near && nd<7){ tx=near.x-0.5; tz=near.z-0.5; }
+      const dx=tx-a.x, dz=tz-a.z, dl=Math.hypot(dx,dz)||1;
+      if(dl>0.3){ const sp=5.5*dt; a.x+=dx/dl*Math.min(sp,dl); a.z+=dz/dl*Math.min(sp,dl); }
+      a.mesh.position.set(a.x,0,a.z);
+      a.mesh.rotation.y=Math.atan2(dx,dz);
+      a.cd-=dt;
+      if(near && nd<2.0 && a.cd<=0){ a.cd=0.7;
+        if(a.mesh.userData.armR)a.mesh.userData.armR.rotation.x=-1.3;
+        this.hitEnemy(near, 10+this.player.level); }
+      if(a.mesh.userData.armR)a.mesh.userData.armR.rotation.x*=0.9;
+      a.mesh.userData.legL.rotation.x=Math.sin(this.time*10)*0.4; a.mesh.userData.legR.rotation.x=-Math.sin(this.time*10)*0.4;
+    }
+  }
+  addShake(a){ this.shake=Math.min(0.6,this.shake+a); }
+  renderMinimap(){
+    const cv=document.getElementById('minimap'); if(!cv)return; const ctx=cv.getContext('2d');
+    const W=cv.width, d=W/this.dungeon.w;
+    ctx.fillStyle='rgba(8,12,20,.6)'; ctx.fillRect(0,0,W,W);
+    for(let y=0;y<this.dungeon.h;y++)for(let x=0;x<this.dungeon.w;x++){
+      const t=this.dungeon.get(x,y);
+      if(t===T.WALL)continue;
+      ctx.fillStyle = t===T.STAIRS?'#ffcf6b':(t===T.WATER?'#2a5a8a':(t===T.CAVERN?'#888':'#46506a'));
+      ctx.fillRect(x*d,y*d,d+0.5,d+0.5);
+    }
+    // interactables
+    for(const ib of this.dungeon.interactables){ if(ib.type==='chest'&&!ib.opened)ctx.fillStyle='#caa'; else if(ib.type==='altar')ctx.fillStyle='#5cf'; else if(ib.type==='trap'&&!ib.triggered)ctx.fillStyle='#a33'; else continue; ctx.fillRect(ib.x*d,ib.y*d,d,d); }
+    // enemies
+    ctx.fillStyle='#e44'; for(const e of this.enemies){ if(e.dead)continue; ctx.fillRect(e.x/TILE*d,e.z/TILE*d,d,d); }
+    // player
+    ctx.fillStyle='#fff'; const px=this.player.x/TILE*d, pz=this.player.z/TILE*d; ctx.beginPath(); ctx.arc(px,pz,d,0,7); ctx.fill();
+    // squad
+    ctx.fillStyle='#4d7'; for(const a of this.squad)ctx.fillRect(a.x/TILE*d,a.z/TILE*d,d,d);
+  }
   hitEnemy(e,dmg){
     if(e.dead)return;
     const crit=Math.random()< (0.08+this.player.dex*0.005);
@@ -655,6 +737,9 @@ class Game {
     e.dead=true;
     this.spawnParticles(e.x,e.z,e.def.color,18);
     scene.remove(e.mesh);
+    if(!this.achievements['first_blood'])this.unlockAch('first_blood');
+    if(e.isBoss)this.unlockAch('boss');
+    this.addShake(e.isBoss?0.5:0.12);
     // loot drop
     this.addLoot(e.x,e.z, this.floor, e.isBoss);
     // xp
@@ -797,7 +882,20 @@ class Game {
     document.getElementById('xpFill').style.width=(p.xp/p.xpNext*100)+'%';
     document.getElementById('floorTag').textContent='Floor '+this.floor;
   }
-  render(){ renderer.render(scene,camera); }
+  render(){
+    // Isometric follow-camera: track the player so the hero is always centred.
+    const px = this.player ? this.player.x : 0;
+    const pz = this.player ? this.player.z : 0;
+    let cx = px + 18, cy = 22, cz = pz + 18;
+    // screen shake (juice) — applied around the follow position, no gradient flicker
+    if(this.shake > 0.001){ const s=this.shake;
+      cx += (Math.random()-.5)*s*2; cz += (Math.random()-.5)*s*2;
+      this.shake *= 0.86; }
+    camera.position.set(cx, cy, cz);
+    camera.lookAt(px, 0, pz);
+    renderer.render(scene,camera);
+    if(this.state==='playing'){ this.renderMinimap(); document.getElementById('squadTag').textContent=this.squad.length?('Allies: '+this.squad.length+' · Gold: '+this.gold):('Gold: '+this.gold); }
+  }
 }
 
 // ====================== BOOT ======================
@@ -853,6 +951,17 @@ game.classes.forEach(c=>{ const d=document.createElement('div'); d.className='cl
   grid.appendChild(d); });
 document.getElementById('playBtn').onclick=()=>{ game.start(game._sel||'warrior'); };
 document.getElementById('retryBtn').onclick=()=>{ game.start(game.cls.id); };
+// achievements panel
+function showAch(){
+  const list=document.getElementById('achList'); list.innerHTML='';
+  for(const a of game.achDefs){ const got=game.achievements[a.id];
+    const row=document.createElement('div'); row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:8px;background:'+(got?'rgba(255,207,107,.12)':'rgba(255,255,255,.04)')+';border:1px solid '+(got?'rgba(255,207,107,.4)':'rgba(255,255,255,.1)');
+    row.innerHTML='<span><b style="color:'+(got?'#ffcf6b':'#889')+'">'+a.name+'</b><br><small style="color:#a9b4c8">'+a.desc+'</small></span><span style="font-size:18px;color:'+(got?'#ffcf6b':'#556')+'">'+(got?'★':'☆')+'</span>';
+    list.appendChild(row); }
+  document.getElementById('achievements').classList.remove('hidden');
+}
+document.getElementById('achClose').onclick=()=>document.getElementById('achievements').classList.add('hidden');
+window.addEventListener('keydown',e=>{ if(e.code==='KeyV' && game.state!=='menu'){ const el=document.getElementById('achievements'); if(el.classList.contains('hidden'))showAch(); else el.classList.add('hidden'); } });
 
 // ---- resize ----
 window.addEventListener('resize',()=>{ renderer.setSize(window.innerWidth,window.innerHeight); buildCamera(); });
