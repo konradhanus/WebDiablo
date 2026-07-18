@@ -6,6 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a2233">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>WebDiablo: Shadows of the Forgotten — 3D</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
@@ -136,7 +139,7 @@
 <script type="module">
 import * as THREE from './vendor/three.module.js';
 
-const GAME_VERSION = '3.3.1';
+const GAME_VERSION = '3.3.2';
 
 // ====================== CONFIG ======================
 const TILE = 2.0;                 // world units per tile
@@ -154,7 +157,7 @@ const T = { WALL:0, FLOOR:1, CORR:2, DOOR:3, STAIRS:4, WATER:5, CAVERN:6 };
 
 // ====================== ENGINE ======================
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, preserveDrawingBuffer:true });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio||1));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -415,6 +418,7 @@ class Game {
     this.ray=new THREE.Raycaster();
     this.squad=[]; this.achievements={}; this.shake=0; this.gold=0;
     this.camera=camera;
+    this.scene=scene;
     this.achDefs=[
       {id:'first_blood',name:'First Blood',desc:'Slay your first foe'},
       {id:'floor5',name:'The Deep',desc:'Reach Floor 5'},
@@ -441,6 +445,9 @@ class Game {
       baseDmg:this.cls.dmg, def:this.cls.def, attackCd:0, invuln:0,
       potions:[1,1,0,0,0], potionCd:0, swing:0, castCd:0 };
     this.mesh=buildHumanoid({cloth:this.cls.color});
+    this.mesh.scale.setScalar(1.5);
+    // warm point light that follows the hero so the player is always clearly lit
+    const plight=new THREE.PointLight(0xffe6b0, 1.4, 26, 1.6); plight.position.set(0,3.2,0); this.mesh.add(plight);
     scene.add(this.mesh);
     this.generateFloor();
     this.state='playing';
