@@ -423,6 +423,53 @@ try {
   check('FPS toggle works', polish.fpsOn === true, 'fpsOn=' + polish.fpsOn);
   check('death stats filled', polish.dsFilled === true, 'dsFilled=' + polish.dsFilled);
   check('no errors after polish', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 021: Touch / Mobile (force touch mode via ?touch=1) ---
+  await page.goto(url + '?touch=1', { waitUntil: 'networkidle' });
+  await page.waitForSelector('#touchUI', { state: 'attached' });
+  const touch = await page.evaluate(() => {
+    const g = window.game;
+    const out = { touchClass: document.body.classList.contains('touch'),
+                  uiVisible: getComputedStyle(document.getElementById('touchUI')).display !== 'none',
+                  isTouch: window.IS_TOUCH === true };
+    if (g.state !== 'playing') g.start();
+    // Joystick drag → movement
+    const j = document.getElementById('joystick');
+    const r = j.getBoundingClientRect();
+    const cx = r.left + r.width/2, cy = r.top + r.height/2;
+    j.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, clientX: cx, clientY: cy, bubbles: true }));
+    j.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: cx + 40, clientY: cy, bubbles: true }));
+    const movedRight = g.keys['KeyD'] === true && g.player.dir === 1;
+    const px0 = g.player.x;
+    for (let i=0;i<10;i++) g.update(0.1); // simulate frames with key held
+    const movedX = g.player.x > px0;
+    j.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, clientX: cx, clientY: cy, bubbles: true }));
+    const released = g.keys['KeyD'] === false;
+    // Tap-to-attack: place an enemy to the right, tap canvas
+    g.enemies = [{ name:'T', hp:30, maxHp:30, def:0, dmg:0, color:'#888', size:14, xp:1,
+                   icon:'💀', x:g.player.x+1.2, y:g.player.y, state:'idle', stateTimer:0,
+                   aggroRange:0, attackCd:0, hitFlash:0, walkTimer:0, drops:[] }];
+    const cv = document.getElementById('gameCanvas');
+    const cr = cv.getBoundingClientRect();
+    cv.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, clientX: cr.left+cr.width*0.7, clientY: cr.top+cr.height*0.5, bubbles: true }));
+    const atkDown = g.mouse.down === true;
+    const hpBefore = g.enemies[0].hp;
+    g.update(0.1);
+    const hpAfter = g.enemies[0].hp;
+    cv.dispatchEvent(new PointerEvent('pointerup', { pointerId: 2, clientX: cr.left+cr.width*0.7, clientY: cr.top+cr.height*0.5, bubbles: true }));
+    const atkUp = g.mouse.down === false;
+    // Fire button
+    const btnFire = document.getElementById('btnFire');
+    btnFire.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3, bubbles: true }));
+    return { ...out, movedRight, movedX, released, atkDown, hpDropped: hpAfter < hpBefore, atkUp };
+  });
+  check('touch mode activated (body.touch + ui visible)', touch.touchClass && touch.uiVisible && touch.isTouch, JSON.stringify(touch));
+  check('joystick drag sets KeyD + dir=1', touch.movedRight === true, 'movedRight=' + touch.movedRight);
+  check('joystick drag moves player', touch.movedX === true, 'movedX=' + touch.movedX);
+  check('joystick release clears key', touch.released === true, 'released=' + touch.released);
+  check('canvas tap sets mouse.down', touch.atkDown === true, 'atkDown=' + touch.atkDown);
+  check('canvas tap deals melee damage', touch.hpDropped === true, 'hpDropped=' + touch.hpDropped);
+  check('canvas tap release clears mouse.down', touch.atkUp === true, 'atkUp=' + touch.atkUp);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message + '\n' + (e.stack||''));
 } finally {

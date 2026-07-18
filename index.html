@@ -2,12 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0505">
 <title>Diablo: Shadows of the Forgotten</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'></svg>">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:#c8b89a;user-select:none}
+body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:#c8b89a;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;overscroll-behavior:none}
+/* ===== Feature 021: touch / mobile hardening ===== */
+html,body{height:100%;width:100%;position:fixed;touch-action:none;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#game{position:fixed;inset:0}
 #gameCanvas{display:block;cursor:crosshair}
 #ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 #ui>*{pointer-events:auto}
@@ -122,6 +128,16 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 #fpsCounter{position:fixed;top:10px;right:180px;z-index:40;font-family:monospace;font-size:12px;color:#88ff88;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:4px;text-shadow:1px 1px 2px #000}
 #deathStats{margin:10px 0;font-family:Georgia,serif;color:#ccaa88;font-size:14px;line-height:1.8}
 #deathStats .ds-row b{color:#ffd700}
+/* ===== Feature 021: Touch controls ===== */
+#touchUI{pointer-events:none}
+#touchUI>*{pointer-events:auto}
+#joystick{position:fixed;left:max(20px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));width:130px;height:130px;border-radius:50%;background:rgba(40,20,10,.28);border:2px solid rgba(255,200,120,.35);touch-action:none;z-index:150}
+#joyKnob{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ffcc88,#a05a22);border:2px solid #ffddaa;box-shadow:0 0 12px rgba(255,180,80,.5);transition:transform .03s linear}
+#touchBtns{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(3,64px);grid-auto-rows:64px;gap:10px;z-index:150}
+.tbtn{width:64px;height:64px;border-radius:14px;font-size:28px;line-height:1;background:linear-gradient(180deg,rgba(60,30,12,.85),rgba(30,12,4,.9));border:2px solid rgba(255,190,100,.45);color:#ffd9a0;box-shadow:0 3px 10px rgba(0,0,0,.5);touch-action:none;user-select:none;-webkit-user-select:none;display:flex;align-items:center;justify-content:center}
+.tbtn:active{background:linear-gradient(180deg,#7a3a14,#4a1e06);transform:scale(.94)}
+body.touch #touchUI{display:block!important}
+body:not(.touch) #touchUI{display:none!important}
 /* ===== Feature 017: Boss HP bar ===== */
 #bossBar{position:absolute;top:96px;left:50%;transform:translateX(-50%);z-index:30;width:min(560px,70vw);text-align:center;font-family:Georgia,serif;color:#ff8866;display:none}
 #bossBar.show{display:block}
@@ -307,9 +323,21 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
   <div id="skillBar"></div>
 </div>
 
+  <div id="touchUI" style="display:none">
+    <div id="joystick"><div id="joyKnob"></div></div>
+    <div id="touchBtns">
+      <button id="btnFire" class="tbtn" title="Fireball">🔥</button>
+      <button id="btnSquad" class="tbtn" title="Squad +">⚔️</button>
+      <button id="btnHold" class="tbtn" title="Hold position">🛡️</button>
+      <button id="btnPot" class="tbtn" title="Potion">🧪</button>
+      <button id="btnAch" class="tbtn" title="Achievements">🏆</button>
+      <button id="btnSet" class="tbtn" title="Settings">⚙️</button>
+    </div>
+  </div>
+
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '2.0.0';
+const GAME_VERSION = '2.1.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -2514,7 +2542,111 @@ function loop(timestamp){
 game.lastTime=performance.now();
 requestAnimationFrame(loop);
 
-// ==================== VERSION FOOTER BAR ====================
+// ==================== FEATURE 021: TOUCH / MOBILE CONTROLS ====================
+(function(){
+  const IS_TOUCH = window.matchMedia && window.matchMedia('(pointer:coarse)').matches
+    || (location.search||'').includes('touch=1');
+  // Expose for tests / debugging
+  window.IS_TOUCH = IS_TOUCH;
+  document.body.classList.toggle('touch', IS_TOUCH);
+  if(!IS_TOUCH) return; // desktop keeps keyboard + mouse untouched
+
+  const g = window.game;
+  const joy = document.getElementById('joystick');
+  const knob = document.getElementById('joyKnob');
+  let joyId = null;            // active pointer id
+  let joyCx = 0, joyCy = 0;    // center in screen px
+  const R = 46;                // knob travel radius
+
+  function nearestEnemyDir(){
+    // Returns {x,y} unit vector toward nearest living enemy, or null.
+    let best=null, bd=1e9;
+    for(const e of g.enemies){ if(e.dead) continue;
+      const dx=e.x-g.player.x, dy=e.y-g.player.y, d=dx*dx+dy*dy;
+      if(d<bd){bd=d;best={x:dx,y:dy};} }
+    if(!best) return null;
+    const l=Math.hypot(best.x,best.y)||1; return {x:best.x/l,y:best.y/l};
+  }
+  function setDirFromVec(vx,vy){
+    // 8-way clamp → player.dir index (0:up 1:right 2:down 3:left)
+    if(Math.abs(vx)>Math.abs(vy)) g.player.dir = vx>0?1:3;
+    else g.player.dir = vy>0?2:0;
+  }
+  function applyJoy(vx,vy){
+    // vx,vy in [-1,1]; drive keys + facing
+    g.keys['KeyA']=vx<-0.35; g.keys['KeyD']=vx>0.35;
+    g.keys['KeyW']=vy<-0.35; g.keys['KeyS']=vy>0.35;
+    if(vx||vy) setDirFromVec(vx,vy);
+  }
+  function resetJoy(){
+    g.keys['KeyW']=g.keys['KeyA']=g.keys['KeyS']=g.keys['KeyD']=false;
+    if(knob) knob.style.transform='translate(0,0)';
+  }
+
+  if(joy){
+    joy.addEventListener('pointerdown',e=>{
+      joyId=e.pointerId;
+      try{ joy.setPointerCapture(e.pointerId); }catch(_){}
+      const r=joy.getBoundingClientRect(); joyCx=r.left+r.width/2; joyCy=r.top+r.height/2;
+      e.preventDefault();
+    });
+    joy.addEventListener('pointermove',e=>{
+      if(e.pointerId!==joyId) return;
+      let dx=e.clientX-joyCx, dy=e.clientY-joyCy;
+      const d=Math.hypot(dx,dy)||1; const cl=Math.min(d,R);
+      const nx=dx/d*cl, ny=dy/d*cl;
+      if(knob) knob.style.transform=`translate(${nx}px,${ny}px)`;
+      applyJoy(dx/d, dy/d);
+      e.preventDefault();
+    });
+    const end=e=>{ if(e.pointerId!==joyId) return; joyId=null; resetJoy(); };
+    joy.addEventListener('pointerup',end);
+    joy.addEventListener('pointercancel',end);
+  }
+
+  // --- Tap-to-attack on the canvas (right side of screen) ---
+  const canvas = document.getElementById('gameCanvas');
+  let atkId=null;
+  canvas.addEventListener('pointerdown',e=>{
+    if(atkId!==null) return;
+    atkId=e.pointerId;
+    // aim toward nearest enemy if any, else keep facing
+    const v=nearestEnemyDir();
+    if(v){ setDirFromVec(v.x,v.y);
+      // record aim point so fireball (if used) goes that way
+      const px=g.camera.x+g.player.x, py=g.camera.y+g.player.y;
+      g.mouse.x=(g.player.x+v.x*3)*32; g.mouse.y=(g.player.y+v.y*3)*32;
+    }
+    g.mouse.down=true;
+    e.preventDefault();
+  });
+  const endAtk=e=>{ if(e.pointerId!==atkId) return; atkId=null; g.mouse.down=false; };
+  canvas.addEventListener('pointerup',endAtk);
+  canvas.addEventListener('pointercancel',endAtk);
+
+  // --- Action buttons ---
+  function bind(id,fn){
+    const el=document.getElementById(id); if(!el) return;
+    el.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); fn(); });
+  }
+  bind('btnFire',()=>{
+    const v=nearestEnemyDir();
+    if(v){ setDirFromVec(v.x,v.y); g.mouse.x=(g.player.x+v.x*3)*32; g.mouse.y=(g.player.y+v.y*3)*32; }
+    g.castFireball();
+  });
+  bind('btnSquad',()=>g.recruitMerc());
+  bind('btnHold',()=>{ g.squadHold=!g.squadHold; g.updateUI();
+    g.logMsg(g.squadHold?'Squad holding position':'Squad following','#ffd700'); });
+  bind('btnPot',()=>{
+    // quaff first non-full HP potion, else slot 0
+    let slot=0;
+    for(let i=0;i<g.player.potions.length;i++){ if(g.player.potions[i]>0){slot=i;break;} }
+    g.usePotion(slot);
+  });
+  bind('btnAch',()=>g.toggleAchPanel());
+  bind('btnSet',()=>g.toggleSettings());
+})();
+
 (function(){
   const bar=document.createElement('div');
   bar.id='versionBar';
