@@ -89,6 +89,15 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 #statsPanel .stat-val{color:#ccc}
 #floorDisplay{position:absolute;top:50px;left:50%;transform:translateX(-50%);color:#aa8866;font-size:14px;z-index:10;text-align:center}
 #combatLog{position:absolute;bottom:70px;left:10px;max-width:300px;max-height:150px;overflow:hidden;z-index:10;pointer-events:none}
+.squad-pip{width:14px;height:14px;border-radius:50%;border:2px solid #3a2a1a;display:inline-block;margin-right:4px;background:rgba(0,0,0,.4)}
+.squad-pip.alive{background:radial-gradient(circle at 35% 35%,#ffd700,#aa8800);border-color:#ffd700;box-shadow:0 0 6px rgba(255,215,0,.5)}
+.squad-pip.dead{background:#3a1010;border-color:#661010}
+#squadBar{position:absolute;bottom:92px;left:10px;z-index:10;display:flex;align-items:center;gap:8px}
+#squadBar .kia{color:#aa4444;font-size:11px;font-family:monospace;text-shadow:1px 1px 2px #000}
+#squadBtns{position:absolute;bottom:92px;right:12px;z-index:10;display:flex;gap:6px}
+#squadBtns button{padding:6px 10px;font-size:11px;font-family:monospace;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer}
+#squadBtns button:hover{box-shadow:0 0 8px rgba(255,136,0,.4)}
+#squadBtns button.active{border-color:#ff8800;box-shadow:0 0 8px rgba(255,136,0,.5)}
 .log-msg{padding:2px 0;font-size:11px;text-shadow:1px 1px 2px #000;animation:logFade 4s ease-out forwards}
 @keyframes logFade{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
 </style>
@@ -203,11 +212,16 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
   <div id="statsPanel"><h3>Character Stats</h3><div class="stat"><span>Strength:</span><span class="stat-val" id="statStr">10</span></div><div class="stat"><span>Dexterity:</span><span class="stat-val" id="statDex">10</span></div><div class="stat"><span>Intelligence:</span><span class="stat-val" id="statInt">10</span></div><div class="stat"><span>Attack Damage:</span><span class="stat-val" id="statDmg">15-25</span></div><div class="stat"><span>Defense:</span><span class="stat-val" id="statDef">5</span></div><div class="stat"><span>Attack Speed:</span><span class="stat-val" id="statAtkSpd">1.0</span></div></div>
   <div id="floorDisplay">Floor 1 — The Crypt of Souls</div>
   <div id="combatLog"></div>
+  <div id="squadBar"><span id="squadPips"></span><span class="kia" id="kiaText">KIA: 0</span></div>
+  <div id="squadBtns">
+    <button id="recruitBtn" title="Recruit mercenary (Q)">+ Squad (Q)</button>
+    <button id="holdBtn" title="Toggle hold position (R)">Hold (R)</button>
+  </div>
 </div>
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.4.0';
+const GAME_VERSION = '1.5.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -217,6 +231,9 @@ const PAL={
   floorA:'#211913', floorB:'#1b140f', floorCrack:'rgba(0,0,0,.35)',
   torch:'#ff8a3a', blood:'#5a0a0a', bloodDark:'#2e0606', ambient:'rgba(2,1,3,.82)'
 };
+// ==================== SQUAD (Feature 013: Cannon-Fodder command) ====================
+const MAX_SQUAD=3;
+const MERC_NAMES=['Brok','Vex','Mara','Dorn','Kell','Sable','Rurik','Ivo','Thane','Wynn'];
 // ==================== SAVE MANAGER (Feature 001) ====================
 const SAVE_KEY = 'webdiablo_save_v1';
 const SAVE_FORMAT = 1;
@@ -618,6 +635,9 @@ class Game {
     this.shakeTimer=0;this.shakeIntensity=0;
     this.floatingTexts=[];
     this.bloods=[]; // Feature 012: persistent blood decals (Cannon-Fodder carnage)
+    this.squad=[]; // Feature 013: recruited mercenaries
+    this.kiaCount=0; // Feature 013: mercs lost (Cannon-Fodder memorial)
+    this.squadHold=false; // Feature 013: hold-position toggle
     this.time=0;
   }
   start(){
@@ -749,6 +769,7 @@ class Game {
     if(this.state!=='playing')return;
     this.time+=dt;
     this.updatePlayer(dt);
+    this.updateSquad(dt); // Feature 013
     // Reveal map around player — fog of war updates continuously
     const p=this.player;
     this.dungeon.markVisible(Math.round(p.x),Math.round(p.y),8);
@@ -945,13 +966,16 @@ class Game {
     }
   }
   updateEnemies(dt){
-    const p=this.player;
     for(const e of this.enemies){
       if(e.dead){e.deathTimer-=dt;continue}
       if(e.hitFlash>0)e.hitFlash-=dt;
       if(e.attackCooldown>0)e.attackCooldown-=dt;
       e.stateTimer-=dt;
       e.stepTimer=(e.stepTimer||0)-dt;
+      // Feature 013: target nearest of player OR living squad members
+      let target=this.player,td=Math.hypot(this.player.x-e.x,this.player.y-e.y);
+      for(const m of this.squad){if(m.dead)continue;const d=Math.hypot(m.x-e.x,m.y-e.y);if(d<td){td=d;target=m;}}
+      const p=target; // p is the chosen target (player or merc)
       const dx=p.x-e.x,dy=p.y-e.y;
       const dist=Math.sqrt(dx*dx+dy*dy);
       if(e.state==='idle'){
@@ -961,22 +985,28 @@ class Game {
       else if(e.state==='chase'){
         if(dist>e.aggroRange*1.5){e.state='idle';e.stateTimer=2;continue}
         if(dist<e.attackRange&&e.attackCooldown<=0){
-          // Attack player
-          if(p.invuln<=0){
-            const dmg=Math.max(1,e.dmg-p.baseDef);
-            p.hp-=dmg;
-            p.invuln=.3;
+          // Attack target (player or merc)
+          const isPlayer=(target===this.player);
+          const invuln=isPlayer?target.invuln:0;
+          if(invuln<=0){
+            const dmg=Math.max(1,e.dmg-(isPlayer?this.player.baseDef:0));
+            target.hp-=dmg;
+            if(isPlayer)target.invuln=.3;
             this.audio.play('hit');
             this.shakeTimer=.15;this.shakeIntensity=4;
             this.floatingTexts.push({x:p.x,y:p.y-.5,text:dmg,color:'#ff0000',life:1,vy:-40});
-            this.logMsg(`${e.name} hits you for ${dmg} damage!`,'#ff4444');
-            if(p.hp<=0){
-              p.hp=0;
-              this.audio.play('death');
-              document.getElementById('deathScreen').style.display='flex';
-              this.state='dead';
-              clearSave();
-              return;
+            this.logMsg(`${e.name} hits ${isPlayer?'you':target.name} for ${dmg}!`,'#ff4444');
+            if(target.hp<=0){
+              if(isPlayer){
+                target.hp=0;
+                this.audio.play('death');
+                document.getElementById('deathScreen').style.display='flex';
+                this.state='dead';
+                clearSave();
+                return;
+              }else{
+                this.mercDie(target);
+              }
             }
           }
           e.attackCooldown=1.5;
@@ -1171,6 +1201,66 @@ class Game {
       }
     }
   }
+  // ==================== SQUAD (Feature 013: Cannon-Fodder command) ====================
+  recruitMerc(){
+    if(this.squad.length>=MAX_SQUAD){this.logMsg('Squad full!','#ff8800');return false;}
+    const p=this.player;
+    const ang=Math.random()*Math.PI*2;
+    const m={
+      x:p.x+Math.cos(ang)*1.2, y:p.y+Math.sin(ang)*1.2,
+      hp:60,maxHp:60,dmg:8+this.floor, speed:7, attackCd:0,
+      name:MERC_NAMES[Math.floor(Math.random()*MERC_NAMES.length)],
+      color:'#caa15a', dead:false, hitFlash:0, walkTimer:0
+    };
+    this.squad.push(m);
+    this.audio.play('levelup');
+    this.logMsg(`Recruited ${m.name} to the squad`,'#ffd700');
+    this.particles.emit(m.x*32+16,m.y*32+16,12,{colors:['#ffd700','#ffaa00'],speed:80,life:.6,size:3,type:'spark'});
+    this.updateUI();
+    return true;
+  }
+  updateSquad(dt){
+    const p=this.player;
+    for(let i=this.squad.length-1;i>=0;i--){
+      const m=this.squad[i];
+      if(m.dead){this.squad.splice(i,1);continue;}
+      if(m.hitFlash>0)m.hitFlash-=dt;
+      if(m.attackCd>0)m.attackCd-=dt;
+      // Find nearest enemy
+      let near=null,nd=1e9;
+      for(const e of this.enemies){if(e.dead)continue;const d=Math.hypot(e.x-m.x,e.y-m.y);if(d<nd){nd=d;near=e;}}
+      if(near&&nd<6){
+        // Attack if in range
+        if(nd<1.6&&m.attackCd<=0){this.hitEnemy(near,m.dmg);m.attackCd=0.8;}
+        else if(!this.squadHold){
+          // move toward enemy
+          const dx=(near.x-m.x)/nd,dy=(near.y-m.y)/nd;
+          const nx=m.x+dx*m.speed*dt,ny=m.y+dy*m.speed*dt;
+          if(this.dungeon.isWalkable(Math.round(nx),Math.round(m.y)))m.x=nx;
+          if(this.dungeon.isWalkable(Math.round(m.x),Math.round(ny)))m.y=ny;
+        }
+      } else if(!this.squadHold){
+        // Follow player
+        const d=Math.hypot(p.x-m.x,p.y-m.y);
+        if(d>1.6){
+          const dx=(p.x-m.x)/d,dy=(p.y-m.y)/d;
+          const nx=m.x+dx*m.speed*dt,ny=m.y+dy*m.speed*dt;
+          if(this.dungeon.isWalkable(Math.round(nx),Math.round(m.y)))m.x=nx;
+          if(this.dungeon.isWalkable(Math.round(m.x),Math.round(ny)))m.y=ny;
+        }
+      }
+    }
+  }
+  mercDie(m){
+    m.dead=true;
+    this.kiaCount++;
+    this.audio.play('death');
+    this.particles.emit(m.x*32+16,m.y*32+16,24,{colors:['#cc0000','#880000','#aa8866'],speed:120,life:.9,size:4,type:'spark'});
+    this.logMsg(`KIA — ${m.name} has fallen`,'#ff4444');
+    this.floatingTexts.push({x:m.x,y:m.y-.5,text:'KIA',color:'#ff0000',life:1.6,vy:-30});
+    this.updateUI();
+  }
+  // =============================================================================
   logMsg(text,color){
     this.logMessages.push({text,color,time:4});
     const el=document.getElementById('combatLog');
@@ -1218,6 +1308,21 @@ class Game {
       el.className='equip-slot'+(item?' filled':'');
       el.title=item?`${item.name} (${item.rarity})`:slot;
     }
+    // Feature 013: squad pips + KIA counter
+    const pips=document.getElementById('squadPips');
+    if(pips){
+      let html='';
+      for(let i=0;i<MAX_SQUAD;i++){
+        const m=this.squad[i];
+        const cls=m?(m.dead?'squad-pip dead':'squad-pip alive'):'squad-pip';
+        html+=`<span class="${cls}"></span>`;
+      }
+      pips.innerHTML=html;
+    }
+    const kia=document.getElementById('kiaText');
+    if(kia)kia.textContent='KIA: '+this.kiaCount;
+    const holdBtn=document.getElementById('holdBtn');
+    if(holdBtn)holdBtn.className=this.squadHold?'active':'';
   }
   toggleEquipPanel(){
     const panel=document.getElementById('equipPanel');
@@ -1555,6 +1660,31 @@ class Game {
       ctx.beginPath();ctx.arc(sx,sy+walkOffset*.3,14,0,Math.PI*2);ctx.stroke();
       ctx.shadowBlur=0;
     }
+    // Draw squad mercenaries (Feature 013)
+    for(const m of this.squad){
+      if(m.dead)continue;
+      const sx=m.x*32-camX+16,sy=m.y*32-camY+16;
+      if(sx<-30||sx>canvas.width+30||sy<-30||sy>canvas.height+30)continue;
+      const visible=this.dungeon.visited[this.dungeon.idx(Math.round(m.x),Math.round(m.y))];
+      if(!visible)continue;
+      // Shadow
+      ctx.fillStyle='rgba(0,0,0,.4)';
+      ctx.beginPath();ctx.ellipse(sx,sy+10,8,4,0,0,Math.PI*2);ctx.fill();
+      // Body
+      ctx.fillStyle=m.hitFlash>0?'#ffffff':m.color;
+      ctx.beginPath();ctx.arc(sx,sy,9,0,Math.PI*2);ctx.fill();
+      // Head
+      ctx.fillStyle='#d4a574';
+      ctx.beginPath();ctx.arc(sx,sy-6,5,0,Math.PI*2);ctx.fill();
+      // HP bar
+      const bw=20;
+      ctx.fillStyle='#333';ctx.fillRect(sx-bw/2,sy-18,bw,3);
+      ctx.fillStyle='#44cc44';ctx.fillRect(sx-bw/2,sy-18,bw*(m.hp/m.maxHp),3);
+      if(this.squadHold){
+        ctx.fillStyle='#ffd700';ctx.font='bold 10px monospace';ctx.textAlign='center';
+        ctx.fillText('HOLD',sx,sy-22);
+      }
+    }
     // Draw projectiles
     for(const pr of this.projectiles){
       const sx=pr.x*32-camX+16,sy=pr.y*32-camY+16;
@@ -1641,6 +1771,14 @@ window.game=game; // expose for E2E tests / debugging
   });
 })();
 
+// ==================== SQUAD CONTROLS (Feature 013) ====================
+(function(){
+  const rb=document.getElementById('recruitBtn');
+  if(rb)rb.addEventListener('click',()=>game.recruitMerc());
+  const hb=document.getElementById('holdBtn');
+  if(hb)hb.addEventListener('click',()=>{game.squadHold=!game.squadHold;game.updateUI();});
+})();
+
 // Feature 001: show CONTINUE if a save exists, and autosave while playing
 (function(){
   const cb=document.getElementById('continueBtn');
@@ -1666,6 +1804,8 @@ document.addEventListener('keydown',e=>{
   if(e.code==='Digit4')game.usePotion(3);
   if(e.code==='Digit5')game.usePotion(4);
   if(e.code==='KeyO')game.toggleSettings();
+  if(e.code==='KeyQ')game.recruitMerc();
+  if(e.code==='KeyR'){game.squadHold=!game.squadHold;game.updateUI();game.logMsg(game.squadHold?'Squad holding position':'Squad following','#ffd700');}
 });
 // Feature 002: settings sliders
 ['setMaster','setMusic','setSfx'].forEach(id=>{

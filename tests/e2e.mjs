@@ -203,6 +203,30 @@ try {
   check('braziers placed in dungeon', atmo.braziers > 0, 'braziers=' + atmo.braziers);
   check('blood decal added on kill', atmo.after > atmo.before, `blood ${atmo.before} -> ${atmo.after}`);
   check('no errors after atmosphere check', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 013: Squad Command ---
+  const squad = await page.evaluate(() => {
+    if (window.game.state !== 'playing') window.game.start();
+    const g = window.game;
+    g.squad.length = 0; g.kiaCount = 0;
+    const recruited = [g.recruitMerc(), g.recruitMerc(), g.recruitMerc(), g.recruitMerc()]; // 4th should fail (cap 3)
+    const squadSize = g.squad.length;
+    // Place a strong enemy adjacent to a merc and run updates until merc dies.
+    const m = g.squad[0];
+    g.enemies = [{ name:'Killer', hp:50, maxHp:50, def:0, dmg:999, color:'#cc0000', size:16,
+                   xp:5, icon:'👹', x:m.x+0.5, y:m.y, state:'chase', stateTimer:5,
+                   aggroRange:10, attackRange:2, attackCooldown:0, hitFlash:0, deathTimer:0,
+                   dead:false, drops:['common'] }];
+    const kiaBefore = g.kiaCount;
+    for (let i=0;i<60;i++) g.update(0.1); // ~6s of combat
+    return { recruited, squadSize, kiaBefore, kiaAfter: g.kiaCount,
+             pips: document.getElementById('squadPips').children.length };
+  });
+  check('recruit respects cap of 3', squad.squadSize === 3, 'size=' + squad.squadSize);
+  check('4th recruit rejected', squad.recruited[3] === false, 'recruited[3]=' + squad.recruited[3]);
+  check('merc death increments KIA', squad.kiaAfter > squad.kiaBefore, `KIA ${squad.kiaBefore} -> ${squad.kiaAfter}`);
+  check('squad HUD shows 3 pips', squad.pips === 3, 'pips=' + squad.pips);
+  check('no errors after squad combat', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message);
 } finally {
