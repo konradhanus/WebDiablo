@@ -183,6 +183,26 @@ try {
         `xp ${killResult.xpBefore} -> ${killResult.xpAfter}`);
   check('mouse-click kill marks enemy dead', killResult.dummyDead);
   check('no errors after click-kill', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 012: braziers placed + blood decals on kill ---
+  const atmo = await page.evaluate(() => {
+    if (window.game.state !== 'playing') window.game.start();
+    const g = window.game;
+    const braziers = g.dungeon.braziers.length;
+    g.bloods.length = 0; // reset for a clean measurement
+    g.attackCooldown = 0;
+    const before = g.bloods.length;
+    g.enemies = [{ name:'Dummy', hp:1, maxHp:1, def:0, dmg:0, color:'#888', size:14,
+                   xp:10, icon:'💀', x:g.player.x+1, y:g.player.y, state:'idle', stateTimer:0,
+                   aggroRange:0, attackRange:1, attackCooldown:0, hitFlash:0, deathTimer:0,
+                   dead:false, drops:['common'] }];
+    g.player.dir = 1;
+    g.mouse.down = true; g.update(0.1); g.mouse.down = false;
+    return { braziers, before, after: g.bloods.length };
+  });
+  check('braziers placed in dungeon', atmo.braziers > 0, 'braziers=' + atmo.braziers);
+  check('blood decal added on kill', atmo.after > atmo.before, `blood ${atmo.before} -> ${atmo.after}`);
+  check('no errors after atmosphere check', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message);
 } finally {

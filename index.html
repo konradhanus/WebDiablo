@@ -207,10 +207,16 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.3.0';
+const GAME_VERSION = '1.4.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
+// ==================== PALETTE (Feature 012: atmospheric rework) ====================
+const PAL={
+  wallTop:'#3a2a22', wallBody:'#241812', wallBottom:'#120b07',
+  floorA:'#211913', floorB:'#1b140f', floorCrack:'rgba(0,0,0,.35)',
+  torch:'#ff8a3a', blood:'#5a0a0a', bloodDark:'#2e0606', ambient:'rgba(2,1,3,.82)'
+};
 // ==================== SAVE MANAGER (Feature 001) ====================
 const SAVE_KEY = 'webdiablo_save_v1';
 const SAVE_FORMAT = 1;
@@ -367,6 +373,7 @@ class Dungeon {
     this.tiles=new Uint8Array(width*height);
     this.rooms=[];this.explored=new Uint8Array(width*height);
     this.visited=new Uint8Array(width*height);
+    this.braziers=[]; // Feature 012: torch light sources in rooms
     this.fill(TILE.WALL);
   }
   fill(v){this.tiles.fill(v)}
@@ -428,6 +435,16 @@ class Dungeon {
         if(bestConn>=0){
           this.carveCorridor(this.rooms[bestConn].cx,this.rooms[bestConn].cy,this.rooms[i].cx,this.rooms[i].cy);
         }
+      }
+    }
+    // Place braziers (torch light sources) in some rooms — Feature 012
+    this.braziers=[];
+    for(const r of this.rooms){
+      const count=Math.random()<.5?1:(Math.random()<.3?2:0);
+      for(let i=0;i<count;i++){
+        const bx=r.x+1+Math.floor(Math.random()*(r.w-2));
+        const by=r.y+1+Math.floor(Math.random()*(r.h-2));
+        if(this.get(bx,by)===TILE.FLOOR||this.get(bx,by)===TILE.CORRIDOR)this.braziers.push({x:bx,y:by,flick:Math.random()*Math.PI*2});
       }
     }
     // Place stairs in the last room (furthest from start)
@@ -600,6 +617,7 @@ class Game {
     this.logMessages=[];this.logTimer=0;
     this.shakeTimer=0;this.shakeIntensity=0;
     this.floatingTexts=[];
+    this.bloods=[]; // Feature 012: persistent blood decals (Cannon-Fodder carnage)
     this.time=0;
   }
   start(){
@@ -741,6 +759,8 @@ class Game {
     this.updateUI();
     this.updateParticles();
     this.updateFloatingTexts(dt);
+    // Feature 012: age blood decals
+    for(let i=this.bloods.length-1;i>=0;i--){this.bloods[i].age+=dt;if(this.bloods[i].age>22)this.bloods.splice(i,1);}
     if(this.shakeTimer>0)this.shakeTimer-=dt;
   }
   updatePlayer(dt){
@@ -883,6 +903,9 @@ class Game {
     }
     if(e.hp<=0){
       e.dead=true;e.deathTimer=1;
+      // Feature 012: blood decal where the enemy falls (capped for perf)
+      this.bloods.push({x:e.x,y:e.y,r:6+Math.random()*7,age:0});
+      if(this.bloods.length>200)this.bloods.shift();
       p.xp+=e.xp;
       this.audio.play('kill');
       this.logMsg(`Defeated ${e.name} (+${e.xp} XP)`,'#44ff44');
@@ -1336,18 +1359,25 @@ class Game {
         const ci=(tx+ty)%colors.length;
         ctx.fillStyle=colors[ci];
         ctx.fillRect(screenX,screenY,33,33);
-        // Tile details
+        // Tile details — Feature 012 atmospheric rework
         if(tile===TILE.WALL){
-          ctx.fillStyle='rgba(0,0,0,.3)';
-          ctx.fillRect(screenX,screenY+30,33,3);
+          // Top bevel highlight + bottom shadow for depth
+          ctx.fillStyle=PAL.wallTop;ctx.fillRect(screenX,screenY,33,3);
+          ctx.fillStyle=PAL.wallBottom;ctx.fillRect(screenX,screenY+30,33,3);
+          // Vertical grout seams
+          ctx.fillStyle='rgba(0,0,0,.25)';
+          if(tx%2===0)ctx.fillRect(screenX,screenY+3,1,30);
+          if(ty%2===0)ctx.fillRect(screenX,screenY+3,33,1);
           ctx.fillStyle='rgba(255,255,255,.03)';
-          ctx.fillRect(screenX,screenY,33,2);
-        }
-        if(tile===TILE.FLOOR){
-          if((tx*7+ty*13)%11===0){
-            ctx.fillStyle='rgba(0,0,0,.15)';
-            ctx.fillRect(screenX+5,screenY+8,3,3);
-          }
+          ctx.fillRect(screenX,screenY,33,1);
+        } else if(tile===TILE.FLOOR||tile===TILE.CORRIDOR){
+          // Checker variation + occasional crack/rubble (deterministic by hash)
+          const h=(tx*73856093^ty*19349663)>>>0;
+          ctx.fillStyle=(h%2===0)?PAL.floorA:PAL.floorB;
+          ctx.fillRect(screenX,screenY,33,33);
+          if(h%11===0){ctx.strokeStyle=PAL.floorCrack;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(screenX+4,screenY+6);ctx.lineTo(screenX+14,screenY+22);ctx.lineTo(screenX+24,screenY+28);ctx.stroke();}
+          if(h%17===0){ctx.fillStyle='rgba(0,0,0,.2)';ctx.fillRect(screenX+10,screenY+12,3,3);}
+          if(tile===TILE.CORRIDOR){ctx.fillStyle='rgba(0,0,0,.18)';ctx.fillRect(screenX,screenY,33,33);}
         }
         if(tile===TILE.WATER){
           const wave=Math.sin(this.time*2+tx*.5+ty*.3)*.15;
@@ -1377,6 +1407,35 @@ class Game {
         }
       }
     }
+    // Feature 012: blood decals on floor (under entities)
+    for(const b of this.bloods){
+      const sx=b.x*32-camX+16,sy=b.y*32-camY+16;
+      if(sx<-30||sx>canvas.width+30||sy<-30||sy>canvas.height+30)continue;
+      const a=Math.max(.12,1-b.age/22)*.7;
+      ctx.globalAlpha=a;
+      ctx.fillStyle=PAL.blood;
+      ctx.beginPath();ctx.ellipse(sx,sy,b.r,b.r*.7,Math.random()*.2,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=PAL.bloodDark;
+      ctx.beginPath();ctx.ellipse(sx+b.r*.3,sy+b.r*.2,b.r*.5,b.r*.35,0,0,Math.PI*2);ctx.fill();
+      ctx.globalAlpha=1;
+    }
+    // Feature 012: torch/brazier light map (draw dark ambient, then additive light pools)
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle=PAL.ambient;ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.globalCompositeOperation='lighter';
+    const lights=[{x:p.x,y:p.y,r:6.5,t:PAL.torch}];
+    for(const br of this.dungeon.braziers){
+      const fl=0.85+Math.sin(this.time*6+br.flick)*0.15;
+      lights.push({x:br.x,y:br.y,r:4.5*fl,t:'#ff9a4a'});
+    }
+    for(const L of lights){
+      const sx=L.x*32-camX+16,sy=L.y*32-camY+16;
+      const rad=L.r*32;
+      const g=ctx.createRadialGradient(sx,sy,4,sx,sy,rad);
+      g.addColorStop(0,L.t);g.addColorStop(.4,'rgba(255,140,50,.5)');g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,rad,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalCompositeOperation='source-over';
     // Draw loot
     for(const l of this.loot){
       const sx=l.x*32-camX+16,sy=l.y*32-camY+16;
