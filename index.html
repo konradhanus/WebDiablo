@@ -337,7 +337,7 @@ body:not(.touch) #touchUI{display:none!important}
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '2.1.0';
+const GAME_VERSION = '2.2.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -345,7 +345,7 @@ const CREATED = 'July 2026';
 const PAL={
   wallTop:'#3a2a22', wallBody:'#241812', wallBottom:'#120b07',
   floorA:'#211913', floorB:'#1b140f', floorCrack:'rgba(0,0,0,.35)',
-  torch:'#ff8a3a', blood:'#5a0a0a', bloodDark:'#2e0606', ambient:'rgba(2,1,3,.82)'
+  torch:'#ffb060', blood:'#7a1212', bloodDark:'#3a0808', ambient:'rgba(2,1,3,.42)', wallTop:'#4a3326', wallBody:'#33231a', wallBottom:'#1a1209'
 };
 // ==================== SQUAD (Feature 013: Cannon-Fodder command) ====================
 const MAX_SQUAD=3;
@@ -599,7 +599,7 @@ class ParticleSystem {
 }
 
 // ==================== DUNGEON GENERATOR ====================
-const TILE={WALL:0,FLOOR:1,CORRIDOR:2,DOOR:3,STAIRS:4,WATER:5,CAVERN:6};
+const TILE={WALL:0,FLOOR:1,CORRIDOR:2,DOOR:3,STAIRS:4,WATER:5,CAVERN:6,TRAP:7,CHEST:8,ALTAR:9,SECRET:10};
 const TILE_COLORS={
   [TILE.WALL]:['#1a1210','#1e1614','#1c1412'],
   [TILE.FLOOR]:['#2a2018','#2c221a','#281e16'],
@@ -607,7 +607,11 @@ const TILE_COLORS={
   [TILE.DOOR]:['#4a3520','#5a4530'],
   [TILE.STAIRS]:['#3a3020','#4a4030'],
   [TILE.WATER]:['#0a1530','#0a1835'],
-  [TILE.CAVERN]:['#1a1815','#1e1a18']
+  [TILE.CAVERN]:['#1a1815','#1e1a18'],
+  [TILE.TRAP]:['#2a2018','#241a12'],
+  [TILE.CHEST]:['#3a2a14','#4a3820'],
+  [TILE.ALTAR]:['#2a2440','#3a3460'],
+  [TILE.SECRET]:['#15100c','#1a140f']
 };
 
 class Dungeon {
@@ -617,6 +621,8 @@ class Dungeon {
     this.rooms=[];this.explored=new Uint8Array(width*height);
     this.visited=new Uint8Array(width*height);
     this.braziers=[]; // Feature 012: torch light sources in rooms
+    this.interactables=[]; // Feature 022: traps/chests/altars (floor-based objects)
+    this.secrets=[]; // Feature 022: hidden caches behind secret walls
     this.fill(TILE.WALL);
   }
   fill(v){this.tiles.fill(v)}
@@ -690,6 +696,45 @@ class Dungeon {
         if(this.get(bx,by)===TILE.FLOOR||this.get(bx,by)===TILE.CORRIDOR)this.braziers.push({x:bx,y:by,flick:Math.random()*Math.PI*2});
       }
     }
+    // Feature 022: scatter discoverable content (traps/chests/altars/secrets)
+    const startRoom=this.rooms[0];
+    const isStartTile=(x,y)=>x>=startRoom.x&&x<startRoom.x+startRoom.w&&y>=startRoom.y&&y<startRoom.y+startRoom.h;
+    const onTile=(tx,ty,type)=>this.set(tx,ty,type);
+    const roomTiles=[];
+    for(const r of this.rooms){
+      if(r===startRoom)continue;
+      for(let ry=r.y+1;ry<r.y+r.h-1;ry++)for(let rx=r.x+1;rx<r.x+r.w-1;rx++)
+        if(this.get(rx,ry)===TILE.FLOOR)roomTiles.push({x:rx,y:ry});
+    }
+    const corridorTiles=[];
+    for(let y=1;y<this.height-1;y++)for(let x=1;x<this.width-1;x++)
+      if(this.get(x,y)===TILE.CORRIDOR)corridorTiles.push({x,y});
+    const pick=(arr)=>arr.length?arr.splice(Math.floor(Math.random()*arr.length),1)[0]:null;
+    // Chests — drop loot on open
+    const chestN=1+Math.floor(floorNum/3);
+    for(let i=0;i<chestN;i++){const t=pick(roomTiles);if(t)this.interactables.push({type:'chest',x:t.x,y:t.y,opened:false});}
+    // Altars — heal + temp buff on interact
+    const altarN=1+Math.floor(floorNum/4);
+    for(let i=0;i<altarN;i++){const t=pick(roomTiles);if(t)this.interactables.push({type:'altar',x:t.x,y:t.y,used:false});}
+    // Traps — hidden, trigger on step (placed on corridors + rooms)
+    const trapN=2+Math.floor(floorNum/2);
+    const trapPool=corridorTiles.concat(roomTiles);
+    for(let i=0;i<trapN;i++){const t=pick(trapPool);if(t)this.interactables.push({type:'trap',x:t.x,y:t.y,triggered:false});}
+    // Secret caches — behind a SECRET wall, revealed by bump
+    if(floorNum%2===0){
+      const wallCandidates=[];
+      for(let y=1;y<this.height-1;y++)for(let x=1;x<this.width-1;x++){
+        if(this.get(x,y)===TILE.WALL){
+          const adj=this.get(x+1,y)===TILE.FLOOR||this.get(x-1,y)===TILE.FLOOR||
+                    this.get(x,y+1)===TILE.FLOOR||this.get(x,y-1)===TILE.FLOOR||
+                    this.get(x+1,y)===TILE.CORRIDOR||this.get(x-1,y)===TILE.CORRIDOR||
+                    this.get(x,y+1)===TILE.CORRIDOR||this.get(x,y-1)===TILE.CORRIDOR;
+          if(adj)wallCandidates.push({x,y});
+        }
+      }
+      const sw=pick(wallCandidates);
+      if(sw){this.set(sw.x,sw.y,TILE.SECRET);this.secrets.push({x:sw.x,y:sw.y,revealed:false,loot:true});}
+    }
     // Place stairs in the last room (furthest from start)
     const last=this.rooms[this.rooms.length-1];
     this.set(last.cx,last.cy,TILE.STAIRS);
@@ -710,32 +755,43 @@ class Dungeon {
     }
   }
   carveCorridor(x1,y1,x2,y2){
-    // Carve a wider, more reliable corridor using L-shaped path with thickness
-    let x=x1,y=y1;
-    // Carve horizontal segment first
-    while(x!==x2){
-      // Make corridor 2 tiles wide for better feel
-      for(let w=0;w<2;w++){
-        this.set(x,y+w,TILE.CORRIDOR);
-        if(this.get(x,y-w)===TILE.WALL)this.set(x,y-w,TILE.CORRIDOR);
-      }
-      x+=x<x2?1:-1;
+    // Feature 022: winding, roomier corridors instead of a single L-bend.
+    // Carve 3 tiles wide and route through 2–3 random waypoints; ~25% chance
+    // of a forked branch for a labyrinth feel. All via TILE.CORRIDOR so
+    // isWalkable() stays valid.
+    const width=3;
+    const waypoints=[{x:x1,y:y1}];
+    const bends=2+Math.floor(Math.random()*2); // 2 or 3 extra bends
+    for(let i=0;i<bends;i++){
+      waypoints.push({
+        x:x1+Math.floor((x2-x1)*(i+1)/(bends+1))+(Math.random()<.5?Math.floor((Math.random()-.5)*(this.width*0.18)):0),
+        y:y1+Math.floor((y2-y1)*(i+1)/(bends+1))+(Math.random()<.5?Math.floor((Math.random()-.5)*(this.height*0.18)):0)
+      });
     }
-    // Carve vertical segment
-    while(y!==y2){
-      for(let w=0;w<2;w++){
-        this.set(x+w,y,TILE.CORRIDOR);
-        if(this.get(x-w,y)===TILE.WALL)this.set(x-w,y,TILE.CORRIDOR);
+    waypoints.push({x:x2,y:y2});
+    const carveSeg=(ax,ay,bx,by)=>{
+      let x=ax,y=ay;
+      while(x!==bx){
+        for(let w=-(width-1);w<=0;w++){
+          this.set(x,y+w,TILE.CORRIDOR);
+          if(this.get(x,y-w)===TILE.WALL)this.set(x,y-w,TILE.CORRIDOR);
+        }
+        x+=x<bx?1:-1;
       }
-      y+=y<y2?1:-1;
-    }
-    // Add some random extra connections for cavern feel
-    if(Math.random()<.2){
-      x=x1;y=y2;
-      while(x!==x2){
-        this.set(x,y,TILE.CORRIDOR);
-        x+=x<x2?1:-1;
+      while(y!==by){
+        for(let w=-(width-1);w<=0;w++){
+          this.set(x+w,y,TILE.CORRIDOR);
+          if(this.get(x-w,y)===TILE.WALL)this.set(x-w,y,TILE.CORRIDOR);
+        }
+        y+=y<by?1:-1;
       }
+    };
+    for(let i=0;i<waypoints.length-1;i++)carveSeg(waypoints[i].x,waypoints[i].y,waypoints[i+1].x,waypoints[i+1].y);
+    // Occasional fork for labyrinth feel
+    if(Math.random()<.25){
+      const fx=Math.min(this.width-2,Math.max(1,x2+(Math.random()<.5?1:-1)*Math.floor(2+Math.random()*4)));
+      const fy=Math.min(this.height-2,Math.max(1,y2+(Math.random()<.5?1:-1)*Math.floor(2+Math.random()*4)));
+      carveSeg(x2,y2,fx,fy);
     }
   }
   randomFloor(){
@@ -1252,10 +1308,11 @@ class Game {
       this.meleeAttack();
       this.attackCooldown=.6/(1+(p.dex-10)*.02);
     }
-    // Pick up
+    // Pick up / interact (E)
     if(this.keys['KeyE']){
       this.keys['KeyE']=false;
       this.pickupLoot();
+      this.interactTile();
     }
     // Check stairs
     if(this.dungeon.get(Math.round(p.x),Math.round(p.y))===TILE.STAIRS){
@@ -1278,6 +1335,63 @@ class Game {
           this.particles.emit(l.x*32,l.y*32,10,{colors:[l.rarity==='legendary'?'#ff8800':l.rarity==='mythic'?'#ff00ff':'#ffd700'],speed:60,life:.5,size:3,type:'spark'});
           this.loot.splice(i,1);
         }else{this.logMsg('Inventory full!','#ff4444')}
+      }
+    }
+    // Feature 022: trap trigger + secret wall reveal on player movement
+    const ptx=Math.round(p.x),pty=Math.round(p.y);
+    for(const ib of this.dungeon.interactables){
+      if(ib.type==='trap'&&!ib.triggered&&ib.x===ptx&&ib.y===pty){
+        ib.triggered=true;
+        const dmg=6+this.floor*2;
+        this.damagePlayer(dmg);
+        this.shake=Math.max(this.shake,8);
+        this.audio.play('hurt');
+        this.floatingTexts.push({x:ptx,y:pty,text:'-'+dmg+' TRAP!',color:'#ff5533',life:1});
+        this.particles.emit(ptx*32+16,pty*32+16,12,{colors:['#ff5533'],speed:90,life:.5,size:3,type:'spark'});
+      }
+    }
+    for(const s of this.dungeon.secrets){
+      if(!s.revealed&&(Math.abs(s.x-ptx)<=1&&Math.abs(s.y-pty)<=1)){
+        s.revealed=true;
+        this.logMsg('A hidden cache is revealed!','#ffd700');
+        this.audio.play('pickup');
+        this.particles.emit(s.x*32+16,s.y*32+16,14,{colors:['#ffd700'],speed:70,life:.6,size:3,type:'spark'});
+      }
+    }
+  }
+  interactTile(){
+    const p=this.player;
+    const ptx=Math.round(p.x),pty=Math.round(p.y);
+    for(const ib of this.dungeon.interactables){
+      if(ib.x!==ptx||ib.y!==pty)continue;
+      if(ib.type==='chest'&&!ib.opened){
+        ib.opened=true;
+        const n=2+Math.floor(Math.random()*2);
+        for(let i=0;i<n;i++){
+          const item=generateItem(this.floor);
+          this.loot.push({...item,x:ptx,y:pty});
+        }
+        if(Math.random()<.7)this.loot.push({id:Math.random().toString(36).substr(2,6),name:'Health Potion',type:'potion',rarity:'common',icon:'🧪',slot:'potion',x:ptx,y:pty});
+        this.logMsg('Opened a chest! Loot scattered nearby.','#ffd700');
+        this.audio.play('pickup');
+        this.particles.emit(ptx*32+16,pty*32+16,16,{colors:['#ffd700','#caa044'],speed:80,life:.6,size:3,type:'spark'});
+      } else if(ib.type==='altar'&&!ib.used){
+        ib.used=true;
+        p.hp=p.maxHp;p.mp=p.maxMp;
+        p.baseDmg+=3;
+        this.logMsg('Altar blessed you: full heal + might!','#88bbff');
+        this.audio.play('heal');
+        this.floatingTexts.push({x:ptx,y:pty-.5,text:'BLESSING',color:'#88bbff',life:1.5,vy:-30});
+        this.particles.emit(ptx*32+16,pty*32+16,18,{colors:['#88bbff','#ffffff'],speed:70,life:.7,size:3,type:'spark'});
+      }
+    }
+    for(const s of this.dungeon.secrets){
+      if(s.revealed&&!s.looted&&Math.abs(s.x-ptx)<=1&&Math.abs(s.y-pty)<=1){
+        s.looted=true;
+        const n=2+Math.floor(Math.random()*2);
+        for(let i=0;i<n;i++)this.loot.push({...generateItem(this.floor),x:ptx,y:pty});
+        this.logMsg('Secret cache plundered!','#ffd700');
+        this.audio.play('pickup');
       }
     }
   }
@@ -2188,10 +2302,10 @@ class Game {
     ctx.globalCompositeOperation='source-over';
     ctx.fillStyle=PAL.ambient;ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.globalCompositeOperation='lighter';
-    const lights=[{x:p.x,y:p.y,r:6.5,t:PAL.torch}];
+    const lights=[{x:p.x,y:p.y,r:9,t:PAL.torch}];
     for(const br of this.dungeon.braziers){
       const fl=0.85+Math.sin(this.time*6+br.flick)*0.15;
-      lights.push({x:br.x,y:br.y,r:4.5*fl,t:'#ff9a4a'});
+      lights.push({x:br.x,y:br.y,r:6*fl,t:'#ffb060'});
     }
     for(const L of lights){
       const sx=L.x*32-camX+16,sy=L.y*32-camY+16;
@@ -2211,6 +2325,45 @@ class Game {
       ctx.font='18px serif';ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.fillText(l.icon,sx,sy+bob);
       ctx.shadowBlur=0;
+    }
+    // Feature 022: draw discoverable interactables (chest/altar/trap/secret)
+    for(const ib of this.dungeon.interactables){
+      const sx=ib.x*32-camX+16,sy=ib.y*32-camY+16;
+      if(sx<-24||sx>canvas.width+24||sy<-24||sy>canvas.height+24)continue;
+      const vis=this.dungeon.visited[this.dungeon.idx(ib.x,ib.y)];
+      if(!vis)continue;
+      if(ib.type==='chest'){
+        if(ib.opened)continue;
+        ctx.fillStyle='#5a3a18';ctx.fillRect(sx-9,sy-7,18,14);
+        ctx.fillStyle='#caa044';ctx.fillRect(sx-9,sy-7,18,4);
+        ctx.fillStyle='#3a2810';ctx.fillRect(sx-2,sy-3,4,4);
+      } else if(ib.type==='altar'){
+        if(ib.used)continue;
+        ctx.shadowColor='#66aaff';ctx.shadowBlur=14;
+        ctx.fillStyle='#3a3460';ctx.fillRect(sx-8,sy-9,16,16);
+        ctx.fillStyle='#88bbff';ctx.beginPath();ctx.arc(sx,sy-1,4,0,Math.PI*2);ctx.fill();
+        ctx.shadowBlur=0;
+      } else if(ib.type==='trap'){
+        const a=ib.triggered?0.5:0.22;
+        ctx.globalAlpha=a;ctx.strokeStyle='#ff5533';ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(sx,sy,9,0,Math.PI*2);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(sx-5,sy);ctx.lineTo(sx+5,sy);ctx.moveTo(sx,sy-5);ctx.lineTo(sx,sy+5);ctx.stroke();
+        ctx.globalAlpha=1;
+      }
+    }
+    // Feature 022: secret caches (only visible once revealed)
+    for(const s of this.dungeon.secrets){
+      const sx=s.x*32-camX+16,sy=s.y*32-camY+16;
+      if(sx<-24||sx>canvas.width+24||sy<-24||sy>canvas.height+24)continue;
+      if(s.revealed){
+        ctx.fillStyle='#2a2418';ctx.fillRect(sx-14,sy-14,28,28);
+        ctx.fillStyle='#caa044';ctx.fillRect(sx-7,sy-7,14,14);
+      } else {
+        // looks like a slightly cracked wall
+        ctx.fillStyle='#241a14';ctx.fillRect(sx-15,sy-15,30,30);
+        ctx.strokeStyle='rgba(0,0,0,.5)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(sx-10,sy-12);ctx.lineTo(sx+4,sy+6);ctx.stroke();
+      }
     }
     // Draw enemies
     for(const e of this.enemies){
@@ -2371,12 +2524,12 @@ class Game {
       p.x*32-camX+16,p.y*32-camY+16,350
     );
     gradient.addColorStop(0,'rgba(0,0,0,0)');
-    gradient.addColorStop(.5,'rgba(0,0,0,.3)');
-    gradient.addColorStop(1,'rgba(0,0,0,.7)');
+    gradient.addColorStop(.5,'rgba(0,0,0,.18)');
+    gradient.addColorStop(1,'rgba(0,0,0,.42)');
     ctx.fillStyle=gradient;ctx.fillRect(0,0,canvas.width,canvas.height);
     // Vignette
-    const vig=ctx.createRadialGradient(canvas.width/2,canvas.height/2,canvas.width*.3,canvas.width/2,canvas.height/2,canvas.width*.7);
-    vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.5)');
+    const vig=ctx.createRadialGradient(canvas.width/2,canvas.height/2,canvas.width*.35,canvas.width/2,canvas.height/2,canvas.width*.75);
+    vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.28)');
     ctx.fillStyle=vig;ctx.fillRect(0,0,canvas.width,canvas.height);
     // Feature 020: level-up flash overlay
     if(this.levelFlash>0){
@@ -2426,6 +2579,12 @@ class Game {
 
 const game=new Game();
 window.game=game; // expose for E2E tests / debugging
+// Feature 022: test hooks that need Dungeon/Game (kept out of the SAVE MANAGER
+// region so the save-system unit test's vm slice still compiles without Dungeon).
+window.__TEST__.makeDungeon=(w,h,floor)=>{const d=new Dungeon(w||60,h||60);d.generate(floor||1);return d;};
+window.__TEST__.Dungeon=Dungeon;
+window.__TEST__.TILE=TILE;
+window.__TEST__.PAL=PAL;
 
 // ==================== LANDING PAGE (Feature 011) ====================
 (function(){

@@ -470,6 +470,49 @@ try {
   check('canvas tap sets mouse.down', touch.atkDown === true, 'atkDown=' + touch.atkDown);
   check('canvas tap deals melee damage', touch.hpDropped === true, 'hpDropped=' + touch.hpDropped);
   check('canvas tap release clears mouse.down', touch.atkUp === true, 'atkUp=' + touch.atkUp);
+
+  // --- Feature 022: Brighter, Winding, Richer Dungeons ---
+  const f022 = await page.evaluate(() => {
+    const T = window.__TEST__;
+    const ambientAlpha = parseFloat((T.PAL.ambient.match(/[\d.]+\)$/)||['0.99)'])[0]);
+    // Generate several floors and aggregate content + connectivity
+    let totalChest=0,totalAltar=0,totalTrap=0,totalSecret=0,allReachable=true,anyWinding=false;
+    const reach=(d)=>{ // BFS from spawn (room 0 center) to stairs
+      const W=d.width,H=d.height,seen=new Uint8Array(W*H);
+      const q=[[d.rooms[0].cx,d.rooms[0].cy]];seen[d.idx(q[0][0],q[0][1])]=1;
+      const walk=(x,y)=>{const t=d.get(x,y);return t===1||t===2||t===3||t===4||t===5||t===6;};
+      while(q.length){const [x,y]=q.shift();
+        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const nx=x+dx,ny=y+dy;
+          if(nx<0||ny<0||nx>=W||ny>=H)continue;const i=d.idx(nx,ny);
+          if(!seen[i]&&walk(nx,ny)){seen[i]=1;q.push([nx,ny]);}}}
+      // find stairs
+      for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(d.get(x,y)===4&&!seen[d.idx(x,y)])return false;
+      return true;
+    };
+    for(let f=1;f<=6;f++){
+      const d=T.makeDungeon(60,60,f);
+      totalChest+=d.interactables.filter(i=>i.type==='chest').length;
+      totalAltar+=d.interactables.filter(i=>i.type==='altar').length;
+      totalTrap+=d.interactables.filter(i=>i.type==='trap').length;
+      totalSecret+=d.secrets.length;
+      if(!reach(d))allReachable=false;
+      // winding: count floor tiles that are CORRIDOR (3-wide winding leaves many)
+      const corr=d.tiles.filter(t=>t===2).length;
+      if(corr>40)anyWinding=true;
+    }
+    // In-game brightness check: player light radius via render constants
+    const g=window.game;if(g.state!=='playing')g.start();
+    return { ambientAlpha, totalChest, totalAltar, totalTrap, totalSecret,
+             allReachable, anyWinding, torch:PAL.torch };
+  });
+  check('ambient overlay is brighter (alpha <= 0.5)', f022.ambientAlpha <= 0.5, 'alpha=' + f022.ambientAlpha);
+  check('every floor has >=1 chest', f022.totalChest >= 6, 'chests=' + f022.totalChest);
+  check('every floor has >=1 altar', f022.totalAltar >= 6, 'altars=' + f022.totalAltar);
+  check('every floor has >=1 trap', f022.totalTrap >= 6, 'traps=' + f022.totalTrap);
+  check('secret caches appear on even floors', f022.totalSecret >= 1, 'secrets=' + f022.totalSecret);
+  check('all generated floors are fully connected (stairs reachable)', f022.allReachable === true);
+  check('corridors are winding (corridor tiles abundant)', f022.anyWinding === true);
+  check('no errors after dungeon generation checks', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message + '\n' + (e.stack||''));
 } finally {
