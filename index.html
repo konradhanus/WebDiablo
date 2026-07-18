@@ -122,7 +122,7 @@
 <script type="module">
 import * as THREE from './vendor/three.module.js';
 
-const GAME_VERSION = '3.1.0';
+const GAME_VERSION = '3.2.0';
 
 // ====================== CONFIG ======================
 const TILE = 2.0;                 // world units per tile
@@ -189,7 +189,7 @@ const tileToWorld = (tx,tz)=>({ x:(tx)*TILE, z:(tz)*TILE });
 // ====================== DUNGEON ======================
 class Dungeon {
   constructor(w,h){ this.w=w; this.h=h; this.tiles=new Uint8Array(w*h);
-    this.rooms=[]; this.decor=[]; }
+    this.rooms=[]; this.decor=[]; this.interactables=[]; }
   idx(x,y){ return y*this.w+x; }
   get(x,y){ return (x>=0&&x<this.w&&y>=0&&y<this.h)?this.tiles[this.idx(x,y)]:T.WALL; }
   set(x,y,v){ if(x>=0&&x<this.w&&y>=0&&y<this.h)this.tiles[this.idx(x,y)]=v; }
@@ -223,6 +223,22 @@ class Dungeon {
     // water / cavern flavor on some floors
     if(floorNum%3===0) for(const r of this.rooms) for(let ry=r.y+1;ry<r.y+r.h-1;ry++)for(let rx=r.x+1;rx<r.x+r.w-1;rx++) if(Math.random()<.07)this.set(rx,ry,T.WATER);
     if(floorNum%5===0) for(const r of this.rooms) if(r.w>6&&r.h>5) for(let ry=r.y;ry<r.y+r.h;ry++)for(let rx=r.x;rx<r.x+r.w;rx++) if(Math.random()<.25)this.set(rx,ry,T.CAVERN);
+    // Feature: chests, altars, traps, secret caches (scatter across rooms, never on start room)
+    const startRoom=this.rooms[0];
+    const placeable=[];
+    for(const r of this.rooms){ if(r===startRoom)continue;
+      for(let ry=r.y+1;ry<r.y+r.h-1;ry++)for(let rx=r.x+1;rx<r.x+r.w-1;rx++)
+        if(this.get(rx,ry)===T.FLOOR) placeable.push({x:rx,y:ry}); }
+    const pick=(arr)=>arr.length?arr.splice(Math.floor(Math.random()*arr.length),1)[0]:null;
+    const nChest=2+Math.floor(Math.random()*2), nAltar=1, nTrap=3+Math.floor(floorNum/2);
+    for(let i=0;i<nChest;i++){ const c=pick(placeable); if(c)this.interactables.push({type:'chest',x:c.x,y:c.y,opened:false}); }
+    for(let i=0;i<nAltar;i++){ const c=pick(placeable); if(c)this.interactables.push({type:'altar',x:c.x,y:c.y,used:false}); }
+    for(let i=0;i<nTrap;i++){ const c=pick(placeable); if(c)this.interactables.push({type:'trap',x:c.x,y:c.y,triggered:false}); }
+    if(floorNum%2===0){ // secret cache behind a wall
+      for(let y=1;y<this.h-1;y++)for(let x=1;x<this.w-1;x++){ if(this.get(x,y)===T.WALL){
+        let adj=false; for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]) if(this.walkable(x+dx,y+dy)){adj=true;break;}
+        if(adj){ this.interactables.push({type:'secret',x,y,revealed:false}); break; } } }
+    }
   }
   carve(x1,y1,x2,y2){
     const wpts=[{x:x1,y:y1}];
@@ -454,6 +470,28 @@ class Game {
       top.position.set(x*TILE, TILE*1.12, z); top.castShadow=true; wallGroup.add(top);
     }
     root.add(wallGroup);
+    // interactables: chests, altars, traps, secrets
+    this.meshes.interact={};
+    for(const ib of this.dungeon.interactables){
+      const wx=ib.x*TILE, wz=ib.y*TILE; const grp=new THREE.Group(); grp.position.set(wx,0,wz);
+      if(ib.type==='chest'){
+        const base=box(TILE*0.6,0.5,TILE*0.45,mat(0x6a4a22,{roughness:.7})); base.position.y=0.25; grp.add(base);
+        const lid=box(TILE*0.62,0.18,TILE*0.48,mat(0x8a6a32,{roughness:.6})); lid.position.y=0.55; grp.add(lid);
+        const lock=box(0.12,0.12,0.12,mat(PALETTE.gold,{metalness:.7,roughness:.3})); lock.position.set(0,0.4,TILE*0.24); grp.add(lock);
+      } else if(ib.type==='altar'){
+        const ped=cyl(TILE*0.35,TILE*0.45,0.7,mat(0x5a5270,{roughness:.8})); ped.position.y=0.35; grp.add(ped);
+        const flame=box(0.3,0.4,0.3,mat(0x55ccff,{emissive:0x2299ff,emissiveIntensity:1.0})); flame.position.y=0.95; grp.add(flame);
+        ib._flame=flame;
+      } else if(ib.type==='trap'){
+        const plate=box(TILE*0.8,0.06,TILE*0.8,mat(0x8a3a2a,{emissive:0x4a1000,emissiveIntensity:ib.triggered?0:0.3})); plate.position.y=0.04; grp.add(plate);
+        for(let k=0;k<4;k++){ const s=box(0.08,TILE*0.4,0.08,mat(0xcccccc,{metalness:.8,roughness:.3})); s.position.set((k%2?0.3:-0.3),(TILE*0.2),k<2?0.3:-0.3); s.rotation.x=0.4; grp.add(s); }
+      } else if(ib.type==='secret'){
+        // hidden wall - appears as normal wall until revealed
+        if(ib.revealed){ const gl=box(TILE,TILE*0.9,TILE,mat(0x6a5a3a,{emissive:0x221a08,emissiveIntensity:.5})); gl.position.y=TILE*0.3; grp.add(gl); }
+      }
+      grp.traverse(o=>{if(o.isMesh)o.castShadow=true;});
+      root.add(grp); this.meshes.interact[ib.x+','+ib.y]=grp;
+    }
   }
   spawnEnemies(){
     this.enemies.length=0;
@@ -531,6 +569,15 @@ class Game {
     // attacks
     if(this.mouse.down && p.attackCd<=0){ this.melee(); p.attackCd=0.42/(1+p.dex*0.01); }
     if((this.mouse.rdown||this.keys['KeyF']) && p.castCd<=0 && p.mp>=12){ this.fireball(); p.castCd=0.5; p.mp-=12; }
+    // interact (E)
+    if(this.keys['KeyE']){ this.keys['KeyE']=false; this.interactTile(); }
+    // potions 1-5
+    for(let i=1;i<=5;i++) if(this.keys['Digit'+i]){ this.keys['Digit'+i]=false; this.usePotion(i-1); }
+    // trap trigger on player tile
+    const ptx=Math.round(p.x/TILE), ptz=Math.round(p.z/TILE);
+    for(const ib of this.dungeon.interactables){ if(ib.type==='trap'&&!ib.triggered&&ib.x===ptx&&ib.y===ptz){
+      ib.triggered=true; this.damagePlayer(14+this.floor*2); this.toast('A trap springs!'); this.spawnParticles(p.x,p.z,0xff5522,12);
+      const m=this.meshes.interact[ptx+','+ptz]; if(m){ m.children[0].material.emissiveIntensity=0; } } }
     // world systems
     this.updateEnemies(dt);
     this.updateProjectiles(dt);
@@ -566,6 +613,33 @@ class Game {
     const m=cyl(0.18,0.18,0.5,mat(0xff7722,{emissive:0xff5500,emissiveIntensity:1.2,roughness:.3}));
     m.rotation.x=Math.PI/2; scene.add(m); proj.mesh=m;
     this.projectiles.push(proj);
+  }
+  interactTile(){
+    const p=this.player; const ptx=Math.round(p.x/TILE), ptz=Math.round(p.z/TILE);
+    for(const ib of this.dungeon.interactables){
+      if(ib.x!==ptx||ib.y!==ptz)continue;
+      if(ib.type==='chest'&&!ib.opened){ ib.opened=true;
+        const n=1+Math.floor(Math.random()*3); for(let i=0;i<n;i++)this.addLoot(ib.x*TILE,ib.y*TILE,this.floor,false);
+        if(Math.random()<.5){ p.potions[1]=Math.min(9,(p.potions[1]||0)+1); }
+        this.toast('Chest opened!'); this.spawnParticles(ib.x*TILE,ib.y*TILE,PALETTE.gold,16);
+        const m=this.meshes.interact[ptx+','+ptz]; if(m&&m.children[1])m.children[1].rotation.x-=0.9;
+      } else if(ib.type==='altar'&&!ib.used){ ib.used=true;
+        p.hp=p.maxHp; p.mp=p.maxMp; p.baseDmg+=2; this.toast('The altar restores you (+2 dmg)');
+        this.spawnParticles(ib.x*TILE,ib.y*TILE,0x55ccff,20);
+        const m=this.meshes.interact[ptx+','+ptz]; if(m&&ib._flame)ib._flame.material.emissiveIntensity=0.2;
+      } else if(ib.type==='secret'&&!ib.revealed){ ib.revealed=true;
+        this.dungeon.set(ib.x,ib.y,T.FLOOR);
+        this.spawnParticles(ib.x*TILE,ib.y*TILE,PALETTE.gold,24); this.toast('A secret cache revealed!');
+        // replace hidden wall mesh with glow
+        const m=this.meshes.interact[ib.x+','+ib.y]; if(m){ m.clear(); const gl=box(TILE,TILE*0.9,TILE,mat(0x6a5a3a,{emissive:0x221a08,emissiveIntensity:.5})); gl.position.y=TILE*0.3; m.add(gl); }
+      }
+    }
+    // potions via number keys handled in update via keys
+  }
+  usePotion(slot){
+    const p=this.player; if(!p.potions[slot]||p.potions[slot]<=0)return;
+    p.potions[slot]--; p.hp=Math.min(p.maxHp,p.hp+(slot===0?60:30)); this.toast('Quaffed a potion');
+    this.spawnParticles(p.x,p.z,0x44ff88,12);
   }
   hitEnemy(e,dmg){
     if(e.dead)return;

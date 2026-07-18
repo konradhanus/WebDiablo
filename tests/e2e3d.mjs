@@ -69,6 +69,13 @@ try{
   check('enemy dies + drops loot', await page.evaluate((bl)=>{ const g=window.game; return g.loot.length>bl; }, beforeLoot));
   check('player takes damage from enemy', await page.evaluate(()=>{ const g=window.game; const p=g.player; const hp0=p.hp; g.damagePlayer(20); return p.hp < p.maxHp; }));
   check('level up works', await page.evaluate(()=>{ const g=window.game; const p=g.player; p.xp=99999; g.checkLevel(); return p.level>=2; }));
+  // ===== Faza 2: content (chests/altars/traps/secrets) =====
+  check('interactables scattered', await page.evaluate(()=>{ const g=window.game; return g.dungeon.interactables.length>0; }));
+  check('chest openable via interactTile', await page.evaluate(()=>{ const g=window.game; const c=g.dungeon.interactables.find(i=>i.type==='chest'); if(!c)return false; const before=g.loot.length; g.player.x=c.x*2; g.player.z=c.y*2; g.interactTile(); return c.opened && g.loot.length>before; }));
+  check('trap triggers damage', await page.evaluate(()=>{ const g=window.game; const t=g.dungeon.interactables.find(i=>i.type==='trap'); if(!t)return true; const hp0=g.player.hp; g.player.invuln=0; g.player.x=t.x*2; g.player.z=t.y*2; g.update(0.05); return g.player.hp<hp0; }));
+  check('secret reveal works', await page.evaluate(()=>{ const g=window.game; const s=g.dungeon.interactables.find(i=>i.type==='secret'); if(!s)return true; g.player.x=s.x*2; g.player.z=s.y*2; g.interactTile(); return s.revealed && g.dungeon.get(s.x,s.y)===1; }));
+  check('potion use heals', await page.evaluate(()=>{ const g=window.game; g.player.hp=10; g.player.potions[0]=2; g.usePotion(0); return g.player.hp>10; }));
+  check('zero errors during content', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
   check('zero errors during combat', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
   check('zero errors during play', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
   // floor descent reachable
