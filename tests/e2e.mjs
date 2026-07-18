@@ -234,20 +234,18 @@ try {
     const g = window.game;
     g.carnage = { kills:0, streak:0, streakTimer:0 };
     g.particles.particles.length = 0; // clear for clean measure
-    g.player.x = 5; g.player.y = 5; g.player.dir = 1;
-    // First kill
+    // First kill (direct, avoids melee direction dependency)
     g.enemies = [{ name:'A', hp:1, maxHp:1, def:0, dmg:0, color:'#888', size:14, xp:5,
                    icon:'💀', x:6, y:5, state:'idle', stateTimer:0, aggroRange:0, attackRange:1,
                    attackCooldown:0, hitFlash:0, deathTimer:0, dead:false, drops:['common'] }];
-    g.mouse.down = true; g.update(0.1); g.mouse.down = false;
+    g.hitEnemy(g.enemies[0], 999);
     const afterFirst = g.particles.particles.length;
     const streakAfter1 = g.carnage.streak;
     // Second kill → streak 2 → bloodlustMult should be >1
-    g.player.attackCooldown = 0; // reset swing cooldown so second swing lands
     g.enemies = [{ name:'B', hp:1, maxHp:1, def:0, dmg:0, color:'#888', size:14, xp:5,
                    icon:'💀', x:6, y:5, state:'idle', stateTimer:0, aggroRange:0, attackRange:1,
                    attackCooldown:0, hitFlash:0, deathTimer:0, dead:false, drops:['common'] }];
-    g.mouse.down = true; g.update(0.1); g.mouse.down = false;
+    g.hitEnemy(g.enemies[0], 999);
     const blm = g.bloodlustMult();
     const carnText = document.getElementById('carnageText').textContent;
     const blText = document.getElementById('bloodlustText').textContent;
@@ -259,6 +257,37 @@ try {
   check('carnage HUD shows kills', /Kills: 2/.test(gore.carnText), gore.carnText);
   check('bloodlust HUD shows streak', /BLOODLUST x2/.test(gore.blText), gore.blText);
   check('no errors after gore', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 015: Horde Waves ---
+  const waves = await page.evaluate(() => {
+    if (window.game.state !== 'playing') window.game.start();
+    const g = window.game;
+    g.enemies.length = 0; g.wave = {num:0,timer:0,active:false,toSpawn:0,spawnCd:0};
+    g.update(0.1); // timer<=0 → startWave
+    const startedActive = g.wave.active;
+    const startedNum = g.wave.num;
+    const toSpawn = g.wave.toSpawn;
+    // run updates to spawn all wave enemies
+    for (let i=0;i<60;i++) g.update(0.1);
+    const waveEnemies = g.enemies.filter(e=>e.wave).length;
+    const xpBefore = g.player.xp;
+    // kill all wave enemies
+    for (const e of g.enemies.filter(e=>e.wave)) { if(!e.dead) g.hitEnemy(e, 99999); }
+    g.update(0.1); // detect cleared
+    const clearedNum = g.wave.num;
+    const clearedActive = g.wave.active;
+    const xpAfter = g.player.xp;
+    const banner = document.getElementById('waveBanner').textContent;
+    return { startedActive, startedNum, toSpawn, waveEnemies, xpBefore, clearedNum, clearedActive, xpAfter, banner };
+  });
+  check('wave starts on timer', waves.startedActive === true, 'active=' + waves.startedActive);
+  check('wave number incremented', waves.startedNum === 1, 'num=' + waves.startedNum);
+  check('wave size computed (>0)', waves.toSpawn > 0, 'toSpawn=' + waves.toSpawn);
+  check('wave enemies spawned', waves.waveEnemies > 0, 'waveEnemies=' + waves.waveEnemies);
+  check('wave clears when all dead', waves.clearedActive === false, 'active=' + waves.clearedActive);
+  check('wave clear grants bonus XP', waves.xpAfter > waves.xpBefore, `xp ${waves.xpBefore} -> ${waves.xpAfter}`);
+  check('cleared banner shown', /WAVE CLEARED/.test(waves.banner), 'banner=' + waves.banner);
+  check('no errors after waves', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message);
 } finally {

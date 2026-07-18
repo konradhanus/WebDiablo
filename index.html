@@ -95,6 +95,10 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 #squadBar{position:absolute;bottom:92px;left:10px;z-index:10;display:flex;align-items:center;gap:8px}
 #carnageBar{position:absolute;bottom:112px;left:10px;z-index:10;font-family:monospace;font-size:12px;color:#cc6655;text-shadow:1px 1px 2px #000}
 #carnageBar #bloodlustText{color:#ff8800;font-weight:bold;margin-left:8px}
+#waveBar{position:absolute;top:78px;left:50%;transform:translateX(-50%);z-index:10;font-family:monospace;font-size:13px;color:#aa8866;text-shadow:1px 1px 2px #000}
+#waveBanner{position:absolute;top:32%;left:50%;transform:translate(-50%,-50%) scale(.6);z-index:60;font-family:'Cinzel',Georgia,serif;font-size:48px;font-weight:900;color:#ff4422;text-shadow:0 0 20px #ff0000,3px 3px 0 #330000;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;text-align:center}
+#waveBanner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#waveBanner.clear{color:#ffdd44;text-shadow:0 0 20px #ffaa00,3px 3px 0 #332200}
 #squadBtns{position:absolute;bottom:92px;right:12px;z-index:10;display:flex;gap:6px}
 #squadBtns button{padding:6px 10px;font-size:11px;font-family:monospace;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer}
 #squadBtns button:hover{box-shadow:0 0 8px rgba(255,136,0,.4)}
@@ -214,7 +218,9 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
   <div id="floorDisplay">Floor 1 — The Crypt of Souls</div>
   <div id="combatLog"></div>
   <div id="squadBar"><span id="squadPips"></span><span class="kia" id="kiaText">KIA: 0</span></div>
-  <div id="carnageBar"><span id="carnageText">Kills: 0</span> <span id="bloodlustText"></span></div>
+<div id="carnageBar"><span id="carnageText">Kills: 0</span> <span id="bloodlustText"></span></div>
+  <div id="waveBar"><span id="waveText">WAVE 0 · next 25s</span></div>
+  <div id="waveBanner"></div>
   <div id="squadBtns">
     <button id="recruitBtn" title="Recruit mercenary (Q)">+ Squad (Q)</button>
     <button id="holdBtn" title="Toggle hold position (R)">Hold (R)</button>
@@ -223,7 +229,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.6.0';
+const GAME_VERSION = '1.7.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -645,6 +651,7 @@ class Game {
     this.kiaCount=0; // Feature 013: mercs lost (Cannon-Fodder memorial)
     this.squadHold=false; // Feature 013: hold-position toggle
     this.carnage={kills:0,streak:0,streakTimer:0}; // Feature 014: bloodlust meter
+    this.wave={num:0,timer:25,active:false,toSpawn:0,spawnCd:0}; // Feature 015: horde waves
     this.time=0;
   }
   start(){
@@ -777,6 +784,8 @@ class Game {
     this.time+=dt;
     this.updatePlayer(dt);
     this.updateSquad(dt); // Feature 013
+    this.updateWaves(dt); // Feature 015
+    this.updateWaveHud(); // Feature 015 (lightweight HUD)
     // Reveal map around player — fog of war updates continuously
     const p=this.player;
     this.dungeon.markVisible(Math.round(p.x),Math.round(p.y),8);
@@ -911,6 +920,112 @@ class Game {
   }
   bloodlustMult(){ // Feature 014: +5% dmg per streak kill, capped at +50%
     return 1+Math.min(this.carnage.streak,10)*0.05;
+  }
+  // ==================== HORDE WAVES (Feature 015: Cannon-Fodder) ====================
+  showBanner(text,cls){
+    const b=document.getElementById('waveBanner');
+    if(!b)return;
+    b.textContent=text;
+    b.className=cls||'show';
+    // force reflow then show
+    void b.offsetWidth;
+    b.classList.add('show');
+    clearTimeout(this._bannerT);
+    this._bannerT=setTimeout(()=>b.classList.remove('show'),1800);
+  }
+  startWave(){
+    const w=this.wave;
+    w.num++;
+    const count=Math.min(40,3+this.floor*2+w.num*2);
+    w.toSpawn=count;
+    w.spawnCd=0;
+    w.active=true;
+    this.showBanner('WAVE '+w.num);
+    this.audio.play('boss');
+    this.logMsg(`Wave ${w.num} approaches — ${count} foes!`,'#ff6644');
+  }
+  updateWaves(dt){
+    const w=this.wave;
+    if(w.active){
+      if(w.toSpawn>0){
+        w.spawnCd-=dt;
+        if(w.spawnCd<=0){
+          this.spawnWaveEnemy();
+          w.toSpawn--;
+          w.spawnCd=0.25;
+        }
+      } else {
+        // wave fully spawned — check if all dead
+        const alive=this.enemies.some(e=>!e.dead&&e.wave);
+        if(!alive){
+          // Wave cleared!
+          const bonus=20*w.num;
+          this.player.xp+=bonus;
+          this.showBanner('WAVE CLEARED','clear');
+          this.logMsg(`Wave ${w.num} cleared! +${bonus} XP`,'#ffdd44');
+          this.audio.play('levelup');
+          w.active=false;
+          w.timer=25;
+        }
+      }
+    } else {
+      w.timer-=dt;
+      if(w.timer<=0)this.startWave();
+    }
+  }
+  spawnEnemy(tmpl,x,y){
+    const scale=1+(this.floor-1)*.15;
+    this.enemies.push({
+      ...tmpl,
+      x,y,
+      hp:Math.floor(tmpl.hp*scale),
+      maxHp:Math.floor(tmpl.hp*scale),
+      dmg:Math.floor(tmpl.dmg*scale),
+      def:Math.floor(tmpl.def*scale),
+      state:'idle',stateTimer:Math.random()*2,
+      aggroRange:tmpl.boss?12:6+Math.floor(Math.random()*3),
+      attackRange:1.8,attackCooldown:0,
+      hitFlash:0,deathTimer:0,dead:false,
+      path:null,pathTimer:0
+    });
+  }
+  spawnWaveEnemy(){
+    const p=this.player;
+    // pick a spawn point in a ring around the player, walkable
+    let sx,sy,tries=0;
+    do{
+      const ang=Math.random()*Math.PI*2;
+      const r=10+Math.random()*4;
+      sx=Math.round(p.x+Math.cos(ang)*r);
+      sy=Math.round(p.y+Math.sin(ang)*r);
+      tries++;
+    }while(!this.dungeon.isWalkable(sx,sy)&&tries<20);
+    if(!this.dungeon.isWalkable(sx,sy)){sx=Math.round(p.x);sy=Math.round(p.y)+1;}
+    // enemy mix scales with depth + wave number
+    const types=ENEMY_TYPES.filter(t=>t.minFloor<=this.floor);
+    const pool=[];
+    for(const t of types){
+      let weight=1;
+      if(t.tier==='fast')weight=1+this.wave.num*.2;
+      if(t.tier==='brute')weight=0.5+this.floor*.3;
+      if(t.tier==='boss')weight=0; // bosses not in normal waves
+      for(let i=0;i<Math.ceil(weight*2);i++)pool.push(t);
+    }
+    const tmpl=pool.length?pool[Math.floor(Math.random()*pool.length)]:ENEMY_TYPES[0];
+    this.spawnEnemy(tmpl,sx,sy);
+    // tag as wave enemy
+    const e=this.enemies[this.enemies.length-1];
+    if(e)e.wave=true;
+  }
+  updateWaveHud(){ // Feature 015: lightweight wave HUD (no full updateUI)
+    const el=document.getElementById('waveText');
+    if(!el)return;
+    if(this.wave.active){
+      const left=this.wave.toSpawn;
+      el.textContent=`WAVE ${this.wave.num} — ${left>0?('INCOMING '+left):'FIGHT!'}`;
+    }else{
+      el.textContent=`WAVE ${this.wave.num} · next ${Math.ceil(this.wave.timer)}s`;
+    }
   }
   hitEnemy(e,dmg){
     const p=this.player;

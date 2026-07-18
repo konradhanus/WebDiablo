@@ -1,6 +1,6 @@
 {
   "name": "webdiablo",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "WebDiablo — single-file dark-fantasy dungeon crawler. Runtime has ZERO dependencies; devDependencies are test-only.",
   "type": "module",
