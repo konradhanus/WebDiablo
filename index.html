@@ -1,0 +1,1537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diablo: Shadows of the Forgotten</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'></svg>">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:#c8b89a;user-select:none}
+#gameCanvas{display:block;cursor:crosshair}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+#ui>*{pointer-events:auto}
+#topBar{position:absolute;top:0;left:50%;transform:translateX(-50%);display:flex;gap:8px;padding:8px 16px;background:linear-gradient(180deg,rgba(20,10,5,.92),rgba(20,10,5,.6));border-bottom:2px solid #5a3a1a;border-radius:0 0 12px 12px;z-index:10}
+.bar-container{width:180px;height:18px;background:#1a0a05;border:1px solid #3a2a1a;border-radius:3px;position:relative;overflow:hidden}
+.bar-fill{height:100%;transition:width .3s}
+.bar-text{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;text-shadow:1px 1px 2px #000;color:#fff;z-index:1}
+.hp-fill{background:linear-gradient(90deg,#8b0000,#cc2200,#ff4400)}
+.mp-fill{background:linear-gradient(90deg,#0a1a6b,#1a3abf,#4466ff)}
+.xp-fill{background:linear-gradient(90deg,#3a1a8b,#6b2abf,#aa44ff)}
+#levelDisplay{color:#ffd700;font-size:13px;font-weight:bold;padding:0 8px;display:flex;align-items:center}
+
+/* ===== DIABLO-STYLE HUD ===== */
+#hudBottom{position:absolute;bottom:0;left:0;width:100%;height:90px;background:linear-gradient(0deg,rgba(15,8,3,.95),rgba(15,8,3,.7));border-top:2px solid #5a3a1a;display:flex;align-items:center;justify-content:center;gap:30px;z-index:10}
+.hud-orb{width:56px;height:56px;border-radius:50%;border:3px solid #3a2a1a;position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:inset 0 0 15px rgba(0,0,0,.8),0 0 10px rgba(0,0,0,.5)}
+.hud-orb:hover{border-color:#ffd700;box-shadow:inset 0 0 15px rgba(0,0,0,.8),0 0 15px rgba(255,215,0,.4)}
+#hpOrb{background:radial-gradient(circle at 35% 35%,#cc3333,#880000,#440000)}
+#mpOrb{background:radial-gradient(circle at 35% 35%,#3344cc,#1a1a88,#0a0a44)}
+#hpOrb .orb-fill{position:absolute;bottom:0;left:0;width:100%;border-radius:50%;background:radial-gradient(circle at 50% 80%,#ff4444,#cc0000);transition:height .3s}
+#mpOrb .orb-fill{position:absolute;bottom:0;left:0;width:100%;border-radius:50%;background:radial-gradient(circle at 50% 80%,#4466ff,#1a3abf);transition:height .3s}
+.orb-icon{font-size:24px;z-index:1;filter:drop-shadow(0 0 3px rgba(255,255,255,.5))}
+.orb-text{position:absolute;bottom:-2px;font-size:10px;font-weight:bold;color:#fff;text-shadow:1px 1px 2px #000;z-index:1}
+.hud-bar{width:200px;height:16px;background:#1a0a05;border:1px solid #3a2a1a;border-radius:3px;position:relative;overflow:hidden}
+.hud-bar-fill{height:100%;transition:width .3s}
+.hud-bar-text{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;color:#fff;text-shadow:1px 1px 2px #000;z-index:1}
+#xpBarHud{background:linear-gradient(90deg,#3a1a8b,#6b2abf,#aa44ff)}
+.hud-spell{width:44px;height:44px;background:linear-gradient(135deg,#1a0a05,#2a1a0a);border:2px solid #3a2a1a;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;position:relative;transition:all .2s}
+.hud-spell:hover{border-color:#ffd700;box-shadow:0 0 8px rgba(255,215,0,.3)}
+.hud-spell.active{border-color:#ff8800;box-shadow:0 0 12px rgba(255,136,0,.5)}
+.hud-spell .spell-key{position:absolute;bottom:-2px;right:2px;font-size:8px;color:#888}
+.hud-spell .spell-cost{position:absolute;top:-8px;right:-4px;font-size:8px;color:#4488ff;font-weight:bold}
+#equipTop{position:absolute;top:4px;left:50%;transform:translateX(-50%);display:flex;gap:3px;padding:4px 10px;background:linear-gradient(180deg,rgba(20,10,5,.85),rgba(20,10,5,.5));border:1px solid #3a2a1a;border-radius:6px;z-index:10}
+.equip-slot{width:36px;height:36px;background:linear-gradient(135deg,#1a0a05,#2a1a0a);border:1px solid #3a2a1a;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:18px;position:relative}
+.equip-slot.filled{border-color:#44aaff;box-shadow:0 0 4px rgba(68,170,255,.3)}
+.equip-slot .slot-label{position:absolute;bottom:-1px;right:1px;font-size:6px;color:#666}
+#topBar{position:absolute;top:0;left:50%;transform:translateX(-50%);display:none}
+#inventory{position:absolute;bottom:90px;left:50%;transform:translateX(-50%);display:flex;gap:4px;padding:8px;background:linear-gradient(0deg,rgba(20,10,5,.92),rgba(20,10,5,.6));border:2px solid #5a3a1a;border-radius:8px 8px 0 0;z-index:10}
+.inv-slot{width:44px;height:44px;background:linear-gradient(135deg,#1a0a05,#2a1a0a);border:1px solid #3a2a1a;border-radius:3px;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;font-size:20px;transition:all .2s}
+.inv-slot:hover{border-color:#ffd700;box-shadow:0 0 8px rgba(255,215,0,.3)}
+.inv-slot.equipped{border-color:#44aaff;box-shadow:0 0 6px rgba(68,170,255,.3)}
+.inv-slot .rarity-common{border-color:#888}
+.inv-slot .rarity-uncommon{border-color:#1aff1a}
+.inv-slot .rarity-rare{border-color:#ffff00}
+.inv-slot .rarity-legendary{border-color:#ff8800}
+.inv-slot .rarity-mythic{border-color:#ff00ff}
+#tooltip{position:absolute;background:rgba(10,5,2,.95);border:1px solid #5a3a1a;border-radius:4px;padding:10px 14px;font-size:12px;max-width:250px;pointer-events:none;z-index:100;display:none;box-shadow:0 4px 12px rgba(0,0,0,.8)}
+#tooltip .item-name{font-weight:bold;font-size:14px;margin-bottom:4px}
+#tooltip .item-type{color:#888;font-style:italic;margin-bottom:6px}
+#tooltip .item-stats{color:#aaa;margin-bottom:4px}
+#tooltip .item-desc{color:#777;font-size:11px;margin-top:6px;border-top:1px solid #333;padding-top:6px}
+#deathScreen{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(80,0,0,.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:200}
+#deathScreen h1{color:#ff2200;font-size:64px;text-shadow:0 0 30px #ff0000,0 0 60px #880000;margin-bottom:20px}
+#deathScreen p{color:#cc8866;font-size:18px;margin-bottom:30px}
+#deathScreen button{padding:12px 40px;font-size:18px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:2px solid #5a3a1a;border-radius:6px;cursor:pointer;font-family:inherit}
+#deathScreen button:hover{background:linear-gradient(180deg,#5a2a1a,#3a1a0a);box-shadow:0 0 15px rgba(255,100,0,.4)}
+#startScreen{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at center,#1a0500 0%,#000 70%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:300}
+#startScreen h1{font-size:52px;color:#cc2200;text-shadow:0 0 20px #ff0000,0 0 40px #880000;margin-bottom:10px;letter-spacing:4px}
+#startScreen h2{font-size:22px;color:#886644;margin-bottom:40px;font-weight:normal;font-style:italic}
+#startScreen button{padding:14px 50px;font-size:20px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:2px solid #5a3a1a;border-radius:6px;cursor:pointer;font-family:inherit;letter-spacing:2px}
+#startScreen button:hover{background:linear-gradient(180deg,#5a2a1a,#3a1a0a);box-shadow:0 0 20px rgba(255,100,0,.5)}
+#startScreen .controls{margin-top:30px;color:#665544;font-size:13px;text-align:center;line-height:1.8}
+#levelUp{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);color:#ffd700;font-size:36px;font-weight:bold;text-shadow:0 0 20px #ff8800,0 0 40px #ff4400;z-index:50;display:none;pointer-events:none;animation:levelUpAnim 2s ease-out forwards}
+@keyframes levelUpAnim{0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}20%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}40%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%)}}
+#statsPanel{position:absolute;top:50px;left:10px;background:rgba(10,5,2,.9);border:1px solid #3a2a1a;border-radius:6px;padding:12px;font-size:12px;z-index:10;display:none;min-width:180px}
+#statsPanel h3{color:#ffd700;margin-bottom:8px;font-size:14px}
+#statsPanel .stat{display:flex;justify-content:space-between;margin:3px 0}
+#statsPanel .stat-val{color:#ccc}
+#floorDisplay{position:absolute;top:50px;left:50%;transform:translateX(-50%);color:#aa8866;font-size:14px;z-index:10;text-align:center}
+#combatLog{position:absolute;bottom:70px;left:10px;max-width:300px;max-height:150px;overflow:hidden;z-index:10;pointer-events:none}
+.log-msg{padding:2px 0;font-size:11px;text-shadow:1px 1px 2px #000;animation:logFade 4s ease-out forwards}
+@keyframes logFade{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
+</style>
+<!-- version d585d719 -->
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<canvas id="minimap" width="160" height="160" style="position:fixed;top:12px;right:12px;width:160px;height:160px;border:2px solid #5a3a1a;border-radius:6px;background:#000;z-index:50;box-shadow:0 0 12px rgba(0,0,0,.6)"></canvas>
+<div id="ui">
+  <!-- Old top bar hidden, replaced by equipTop + hudBottom -->
+  <div id="topBar">
+    <div class="bar-container"><div class="bar-fill hp-fill" id="hpBar" style="width:100%"></div><div class="bar-text" id="hpText">100/100</div></div>
+    <div class="bar-container"><div class="bar-fill mp-fill" id="mpBar" style="width:100%"></div><div class="bar-text" id="mpText">50/50</div></div>
+    <div class="bar-container"><div class="bar-fill xp-fill" id="xpBar" style="width:0%"></div><div class="bar-text" id="xpText">0/100</div></div>
+    <div id="levelDisplay">Lv. <span id="levelNum">1</span></div>
+  </div>
+  <!-- Equipment slots on top -->
+  <div id="equipTop">
+    <div class="equip-slot" id="eqHelm" title="Helm"><span class="slot-label">H</span></div>
+    <div class="equip-slot" id="eqChest" title="Chest Armor"><span class="slot-label">C</span></div>
+    <div class="equip-slot" id="eqWeapon" title="Weapon"><span class="slot-label">W</span></div>
+    <div class="equip-slot" id="eqShield" title="Shield"><span class="slot-label">S</span></div>
+    <div class="equip-slot" id="eqLegs" title="Legs"><span class="slot-label">L</span></div>
+    <div class="equip-slot" id="eqBoots" title="Boots"><span class="slot-label">B</span></div>
+    <div class="equip-slot" id="eqGloves" title="Gloves"><span class="slot-label">G</span></div>
+    <div class="equip-slot" id="eqRingL" title="Ring Left"><span class="slot-label">R</span></div>
+    <div class="equip-slot" id="eqRingR" title="Ring Right"><span class="slot-label">R</span></div>
+  </div>
+  <!-- Diablo-style HUD at bottom -->
+  <div id="hudBottom">
+    <!-- HP Orb -->
+    <div class="hud-orb" id="hpOrb" onclick="game.usePotion(0)" title="Health Orb — Click to use potion">
+      <div class="orb-fill" id="hpOrbFill" style="height:100%"></div>
+      <span class="orb-icon">❤️</span>
+      <span class="orb-text" id="hpOrbText">100/100</span>
+    </div>
+    <!-- XP Bar -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div class="hud-bar" style="width:180px">
+        <div class="hud-bar-fill" id="xpBarHud" style="width:0%"></div>
+        <div class="hud-bar-text" id="xpTextHud">0/100 XP</div>
+      </div>
+      <span style="font-size:9px;color:#ffd700;text-shadow:1px 1px 2px #000">Lv.<span id="levelNumHud">1</span></span>
+    </div>
+    <!-- Spells -->
+    <div style="display:flex;gap:4px">
+      <div class="hud-spell" id="spellFireball" onclick="game.castFireball()" title="Fireball — Right-click or press F">
+        <span>🔥</span>
+        <span class="spell-key">F</span>
+        <span class="spell-cost" id="fireballCost">15 MP</span>
+      </div>
+      <div class="hud-spell" id="spellPotion" onclick="game.usePotion(0)" title="Health Potion (1-5)">
+        <span>🧪</span>
+        <span class="spell-key" id="potionCount">5</span>
+      </div>
+    </div>
+    <!-- MP Orb -->
+    <div class="hud-orb" id="mpOrb" title="Mana Orb">
+      <div class="orb-fill" id="mpOrbFill" style="height:100%"></div>
+      <span class="orb-icon">💧</span>
+      <span class="orb-text" id="mpOrbText">50/50</span>
+    </div>
+  </div>
+  <!-- Inventory panel (toggled with I) -->
+  <div id="inventory"></div>
+  <div id="tooltip"></div>
+  <!-- Equipment detail panel (toggled with E) -->
+  <div id="equipPanel" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(10,5,2,.95);border:2px solid #5a3a1a;border-radius:8px;padding:16px;z-index:100;display:none;min-width:300px">
+    <h3 style="color:#ffd700;margin-bottom:12px;text-align:center">Equipment</h3>
+    <div id="equipDetail" style="display:flex;gap:20px;align-items:flex-start">
+      <!-- Character preview -->
+      <div style="text-align:center">
+        <div id="charPreview" style="width:120px;height:140px;background:rgba(0,0,0,.3);border:1px solid #3a2a1a;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:60px;margin-bottom:8px">🧙</div>
+        <div id="charStats" style="font-size:11px;color:#aaa;text-align:left"></div>
+      </div>
+      <!-- Equipment slots -->
+      <div style="flex:1">
+        <div style="font-size:12px;color:#ffd700;margin-bottom:6px">Equipped Items:</div>
+        <div id="equipSlots" style="display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+    </div>
+    <button onclick="game.toggleEquipPanel()" style="margin-top:12px;width:100%;padding:6px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer">Close</button>
+  </div>
+  <div id="deathScreen"><h1>YOU DIED</h1><p>Your body lies among the fallen...</p><button onclick="game.respawn()">Rise Again</button></div>
+  <div id="startScreen"><h1>SHADOWS OF THE FORGOTTEN</h1><h2>A Dark Fantasy Dungeon Crawler</h2><button onclick="game.start()">ENTER THE DEPTHS</button><div class="controls">WASD/Arrows — Move<br>Mouse Left — Attack<br>Right-click / F — Fireball<br>E — Pick up items / Toggle Equipment<br>Tab — Toggle Stats<br>I — Inventory<br>1-5 — Use potions<br>ESC — Menu</div></div>
+  <div id="levelUp">LEVEL UP!</div>
+  <div id="statsPanel"><h3>Character Stats</h3><div class="stat"><span>Strength:</span><span class="stat-val" id="statStr">10</span></div><div class="stat"><span>Dexterity:</span><span class="stat-val" id="statDex">10</span></div><div class="stat"><span>Intelligence:</span><span class="stat-val" id="statInt">10</span></div><div class="stat"><span>Attack Damage:</span><span class="stat-val" id="statDmg">15-25</span></div><div class="stat"><span>Defense:</span><span class="stat-val" id="statDef">5</span></div><div class="stat"><span>Attack Speed:</span><span class="stat-val" id="statAtkSpd">1.0</span></div></div>
+  <div id="floorDisplay">Floor 1 — The Crypt of Souls</div>
+  <div id="combatLog"></div>
+</div>
+
+<script>
+// ==================== AUDIO ENGINE ====================
+class AudioEngine {
+  constructor(){this.ctx=null;this.enabled=false}
+  init(){try{this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.enabled=true}catch(e){}}
+  play(type){
+    if(!this.enabled)return;
+    const c=this.ctx,t=c.currentTime;
+    const o=c.createOscillator(),g=c.createGain();
+    o.connect(g);g.connect(c.destination);
+    switch(type){
+      case'sword':o.type='sawtooth';o.frequency.setValueAtTime(200,t);o.frequency.exponentialRampToValueAtTime(80,t+.15);g.gain.setValueAtTime(.15,t);g.gain.exponentialRampToValueAtTime(.001,t+.2);o.start(t);o.stop(t+.2);break;
+      case'hit':o.type='square';o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(50,t+.1);g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.15);o.start(t);o.stop(t+.15);break;
+      case'kill':o.type='sawtooth';o.frequency.setValueAtTime(400,t);o.frequency.exponentialRampToValueAtTime(100,t+.3);g.gain.setValueAtTime(.12,t);g.gain.exponentialRampToValueAtTime(.001,t+.35);o.start(t);o.stop(t+.35);break;
+      case'pickup':o.type='sine';o.frequency.setValueAtTime(500,t);o.frequency.exponentialRampToValueAtTime(900,t+.1);g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.15);o.start(t);o.stop(t+.15);break;
+      case'levelup':o.type='sine';o.frequency.setValueAtTime(400,t);o.frequency.setValueAtTime(500,t+.1);o.frequency.setValueAtTime(600,t+.2);o.frequency.setValueAtTime(800,t+.3);g.gain.setValueAtTime(.15,t);g.gain.exponentialRampToValueAtTime(.001,t+.5);o.start(t);o.stop(t+.5);break;
+      case'death':o.type='sawtooth';o.frequency.setValueAtTime(300,t);o.frequency.exponentialRampToValueAtTime(30,t+1);g.gain.setValueAtTime(.15,t);g.gain.exponentialRampToValueAtTime(.001,t+1.2);o.start(t);o.stop(t+1.2);break;
+      case'magic':o.type='sine';o.frequency.setValueAtTime(600,t);o.frequency.exponentialRampToValueAtTime(1200,t+.2);g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.start(t);o.stop(t+.3);break;
+      case'steps':o.type='triangle';o.frequency.setValueAtTime(80,t);g.gain.setValueAtTime(.03,t);g.gain.exponentialRampToValueAtTime(.001,t+.05);o.start(t);o.stop(t+.05);break;
+      case'boss':o.type='sawtooth';o.frequency.setValueAtTime(100,t);o.frequency.setValueAtTime(120,t+.2);o.frequency.setValueAtTime(80,t+.4);g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.6);o.start(t);o.stop(t+.6);break;
+      case'heal':o.type='sine';o.frequency.setValueAtTime(300,t);o.frequency.exponentialRampToValueAtTime(600,t+.3);g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.4);o.start(t);o.stop(t+.4);break;
+    }
+  }
+}
+
+// ==================== PARTICLE SYSTEM ====================
+class Particle {
+  constructor(x,y,vx,vy,life,color,size,type='circle'){
+    this.x=x;this.y=y;this.vx=vx;this.vy=vy;this.life=life;this.maxLife=life;
+    this.color=color;this.size=size;this.type=type;this.rotation=Math.random()*Math.PI*2;
+    this.rotSpeed=(Math.random()-.5)*.2;
+  }
+  update(dt){this.x+=this.vx*dt;this.y+=this.vy*dt;this.life-=dt;this.rotation+=this.rotSpeed;this.vy+=80*dt}
+  get alpha(){return Math.max(0,this.life/this.maxLife)}
+  get alive(){return this.life>0}
+}
+
+class ParticleSystem {
+  constructor(){this.particles=[]}
+  emit(x,y,count,config){
+    for(let i=0;i<count;i++){
+      const angle=config.angle!==undefined?config.angle+(Math.random()-.5)*(config.spread||1):Math.random()*Math.PI*2;
+      const speed=(config.speed||100)*(0.5+Math.random()*0.5);
+      this.particles.push(new Particle(
+        x,y,Math.cos(angle)*speed,Math.sin(angle)*speed,
+        (config.life||1)*(0.5+Math.random()*0.5),
+        config.colors?config.colors[Math.floor(Math.random()*config.colors.length)]:(config.color||'#ff4400'),
+        config.size||3,config.type||'circle'
+      ));
+    }
+  }
+  update(dt){
+    for(let i=this.particles.length-1;i>=0;i--){
+      this.particles[i].update(dt);
+      if(!this.particles[i].alive)this.particles.splice(i,1);
+    }
+  }
+  draw(ctx,camX,camY){
+    for(const p of this.particles){
+      ctx.globalAlpha=p.alpha;
+      const sx=p.x-camX,sy=p.y-camY;
+      if(sx<-50||sx>canvas.width+50||sy<-50||sy>canvas.height+50)continue;
+      ctx.fillStyle=p.color;
+      if(p.type==='circle'){ctx.beginPath();ctx.arc(sx,sy,p.size*p.alpha,0,Math.PI*2);ctx.fill()}
+      else if(p.type==='spark'){
+        ctx.save();ctx.translate(sx,sy);ctx.rotate(p.rotation);
+        ctx.fillRect(-p.size,-.5,p.size*2,1);
+        ctx.fillRect(-.5,-p.size,1,p.size*2);
+        ctx.restore();
+      }else if(p.type==='ember'){
+        ctx.save();ctx.translate(sx,sy);ctx.rotate(p.rotation);
+        ctx.fillRect(-p.size,-p.size*.3,p.size*2,p.size*.6);
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha=1;
+  }
+}
+
+// ==================== DUNGEON GENERATOR ====================
+const TILE={WALL:0,FLOOR:1,CORRIDOR:2,DOOR:3,STAIRS:4,WATER:5,CAVERN:6};
+const TILE_COLORS={
+  [TILE.WALL]:['#1a1210','#1e1614','#1c1412'],
+  [TILE.FLOOR]:['#2a2018','#2c221a','#281e16'],
+  [TILE.CORRIDOR]:['#252015','#282218'],
+  [TILE.DOOR]:['#4a3520','#5a4530'],
+  [TILE.STAIRS]:['#3a3020','#4a4030'],
+  [TILE.WATER]:['#0a1530','#0a1835'],
+  [TILE.CAVERN]:['#1a1815','#1e1a18']
+};
+
+class Dungeon {
+  constructor(width,height){
+    this.width=width;this.height=height;
+    this.tiles=new Uint8Array(width*height);
+    this.rooms=[];this.explored=new Uint8Array(width*height);
+    this.visited=new Uint8Array(width*height);
+    this.fill(TILE.WALL);
+  }
+  fill(v){this.tiles.fill(v)}
+  idx(x,y){return y*this.width+x}
+  get(x,y){return(x>=0&&x<this.width&&y>=0&&y<this.height)?this.tiles[this.idx(x,y)]:TILE.WALL}
+  set(x,y,v){if(x>=0&&x<this.width&&y>=0&&y<this.height)this.tiles[this.idx(x,y)]=v}
+  isWalkable(x,y){const t=this.get(x,y);return t===TILE.FLOOR||t===TILE.CORRIDOR||t===TILE.DOOR||t===TILE.STAIRS||t===TILE.CAVERN||t===TILE.WATER}
+  generate(floorNum){
+    this.fill(TILE.WALL);this.rooms=[];
+    const roomCount=6+Math.floor(Math.random()*4)+Math.floor(floorNum/2);
+    const maxIter=500;let iter=0;
+    while(this.rooms.length<roomCount&&iter<maxIter){
+      iter++;
+      const w=5+Math.floor(Math.random()*5);
+      const h=4+Math.floor(Math.random()*5);
+      const x=1+Math.floor(Math.random()*(this.width-w-2));
+      const y=1+Math.floor(Math.random()*(this.height-h-2));
+      const room={x,y,w,h,cx:Math.floor(x+w/2),cy:Math.floor(y+h/2)};
+      let overlap=false;
+      for(const r of this.rooms){
+        if(x-2<r.x+r.w&&x+w+2>r.x&&y-2<r.y+r.h&&y+h+2>r.y){overlap=true;break}
+      }
+      if(!overlap){
+        for(let ry=y;ry<y+h;ry++)for(let rx=x;rx<x+w;rx++)this.set(rx,ry,TILE.FLOOR);
+        this.rooms.push(room);
+      }
+    }
+    // Sort rooms by position for better corridor connectivity (top-left to bottom-right)
+    this.rooms.sort((a,b)=>(a.cy*this.width+a.cx)-(b.cy*this.width+b.cx));
+    // Connect rooms using minimum spanning tree approach — connect each room to its nearest neighbor
+    const connected=new Set([0]);
+    const unconnected=new Set();
+    for(let i=1;i<this.rooms.length;i++)unconnected.add(i);
+    while(unconnected.size>0){
+      let bestDist=Infinity,bestA=-1,bestB=-1;
+      for(const ci of connected){
+        for(const ui of unconnected){
+          const a=this.rooms[ci],b=this.rooms[ui];
+          const dist=Math.abs(a.cx-b.cx)+Math.abs(a.cy-b.cy);
+          if(dist<bestDist){bestDist=dist;bestA=ci;bestB=ui;}
+        }
+      }
+      if(bestA>=0&&bestB>=0){
+        this.carveCorridor(this.rooms[bestA].cx,this.rooms[bestA].cy,this.rooms[bestB].cx,this.rooms[bestB].cy);
+        connected.add(bestB);
+        unconnected.delete(bestB);
+      }else{
+        unconnected.clear();
+      }
+    }
+    // Ensure all rooms are connected — if any remain unconnected, connect to nearest
+    for(let i=0;i<this.rooms.length;i++){
+      if(!connected.has(i)){
+        let bestDist=Infinity,bestConn=-1;
+        for(const ci of connected){
+          const dist=Math.abs(this.rooms[i].cx-this.rooms[ci].cx)+Math.abs(this.rooms[i].cy-this.rooms[ci].cy);
+          if(dist<bestDist){bestDist=dist;bestConn=ci;}
+        }
+        if(bestConn>=0){
+          this.carveCorridor(this.rooms[bestConn].cx,this.rooms[bestConn].cy,this.rooms[i].cx,this.rooms[i].cy);
+        }
+      }
+    }
+    // Place stairs in the last room (furthest from start)
+    const last=this.rooms[this.rooms.length-1];
+    this.set(last.cx,last.cy,TILE.STAIRS);
+    if(floorNum%3===0){
+      for(const r of this.rooms){
+        for(let ry=r.y+1;ry<r.y+r.h-1;ry++)for(let rx=r.x+1;rx<r.x+r.w-1;rx++){
+          if(Math.random()<.08)this.set(rx,ry,TILE.WATER);
+        }
+      }
+    }
+    if(floorNum%5===0){
+      for(const r of this.rooms){
+        if(r.w>6&&r.h>5){
+          for(let ry=r.y;ry<r.y+r.h;ry++)for(let rx=r.x;rx<r.x+r.w;rx++)
+            if(Math.random()<.3)this.set(rx,ry,TILE.CAVERN);
+        }
+      }
+    }
+  }
+  carveCorridor(x1,y1,x2,y2){
+    // Carve a wider, more reliable corridor using L-shaped path with thickness
+    let x=x1,y=y1;
+    // Carve horizontal segment first
+    while(x!==x2){
+      // Make corridor 2 tiles wide for better feel
+      for(let w=0;w<2;w++){
+        this.set(x,y+w,TILE.CORRIDOR);
+        if(this.get(x,y-w)===TILE.WALL)this.set(x,y-w,TILE.CORRIDOR);
+      }
+      x+=x<x2?1:-1;
+    }
+    // Carve vertical segment
+    while(y!==y2){
+      for(let w=0;w<2;w++){
+        this.set(x+w,y,TILE.CORRIDOR);
+        if(this.get(x-w,y)===TILE.WALL)this.set(x-w,y,TILE.CORRIDOR);
+      }
+      y+=y<y2?1:-1;
+    }
+    // Add some random extra connections for cavern feel
+    if(Math.random()<.2){
+      x=x1;y=y2;
+      while(x!==x2){
+        this.set(x,y,TILE.CORRIDOR);
+        x+=x<x2?1:-1;
+      }
+    }
+  }
+  randomFloor(){
+    const rooms=this.rooms.filter(r=>{
+      for(let ry=r.y;ry<r.y+r.h;ry++)for(let rx=r.x;rx<r.x+r.w;rx++)
+        if(this.get(rx,ry)===TILE.STAIRS)return false;
+      return true;
+    });
+    const room=rooms[Math.floor(Math.random()*rooms.length)];
+    let attempts=0;
+    while(attempts<50){
+      const x=room.x+Math.floor(Math.random()*room.w);
+      const y=room.y+Math.floor(Math.random()*room.h);
+      if(this.isWalkable(x,y))return{x,y};
+      attempts++;
+    }
+    return{x:room.cx,y:room.cy};
+  }
+  markVisible(cx,cy,radius){
+    for(let dy=-radius;dy<=radius;dy++)for(let dx=-radius;dx<=radius;dx++){
+      const tx=cx+dx,ty=cy+dy;
+      if(tx>=0&&tx<this.width&&ty>=0&&ty<this.height){
+        if(dx*dx+dy*dy<=radius*radius){
+          this.visited[this.idx(tx,ty)]=1;
+          if(dx*dx+dy*dy<=(radius+1)*(radius+1))this.explored[this.idx(tx,ty)]=1;
+        }
+      }
+    }
+  }
+}
+
+// ==================== ITEM SYSTEM ====================
+const ITEM_TYPES=['sword','axe','mace','dagger','staff','helmet','chest','legs','boots','gloves','shield','ring'];
+const ITEM_NAMES={
+  sword:['Rustblade','Iron Fang','Shadow Edge','Bloodletter','Soul Reaver','Doombringer','Void Cleaver'],
+  axe:['Bone Splitter','Grim Hatchet','Frost Cleaver','Hellforge','Death\'s Call','Worldbreaker'],
+  mace:['Crusher','Ward Breaker','Thunder Hammer','Soul Smasher','Doom Mallet','Nightfall'],
+  dagger:['Venom Fang','Shadow Stab','Night Blade','Whisper','Silent Death','Midnight Edge'],
+  staff:['Mage Staff','Soul Binder','Arcane Rod','Void Staff','Death\'s Touch','Flame Wand'],
+  helmet:['Iron Helm','Shadow Crown','Bone Mask','Dark Helm','Crown of Ashes','Warden\'s Helm'],
+  chest:['Iron Plate','Shadow Mail','Bone Armor','Dark Plate','Cursed Breastplate','Warden\'s Plate'],
+  legs:['Iron Leggings','Shadow Treads','Bone Greaves','Dark Leggings','Cursed Leggings','Warden\'s Leggings'],
+  boots:['Iron Boots','Shadow Steps','Bone Walkers','Dark Boots','Cursed Treads','Warden\'s Boots'],
+  gloves:['Iron Gauntlets','Shadow Grasp','Bone Fingers','Dark Gloves','Cursed Gauntlets','Warden\'s Gloves'],
+  shield:['Iron Buckler','Shadow Kite','Bone Tower','Dark Aegis','Dragonguard'],
+  ring:['Iron Ring','Shadow Band','Bone Ring','Dark Band','Cursed Ring','Warden\'s Band'],
+  amulet:['Iron Amulet','Shadow Pendant','Bone Charm','Dark Amulet','Cursed Pendant','Warden\'s Charm']
+};
+const RARITIES=[
+  {name:'common',color:'#888888',mult:1,weight:50},
+  {name:'uncommon',color:'#1aff1a',mult:1.5,weight:25},
+  {name:'rare',color:'#ffff00',mult:2.5,weight:15},
+  {name:'legendary',color:'#ff8800',mult:4,weight:7},
+  {name:'mythic',color:'#ff00ff',mult:6,weight:3}
+];
+const STAT_NAMES={
+  str:'Strength',dex:'Dexterity',int:'Intelligence',hp:'Health',mp:'Mana',
+  dmg:'Damage',def:'Defense',atkSpd:'Attack Speed',crit:'Critical Chance',
+  lifesteal:'Life Steal',manaRegen:'Mana Regen',hpRegen:'Health Regen'
+};
+
+function rollRarity(floor){
+  const rf=Math.min(floor/10,1);
+  let weights=RARITIES.map(r=>({r,w:r.weight+rf*r.weight*2}));
+  const total=weights.reduce((s,w)=>s+w.w,0);
+  let roll=Math.random()*total;
+  for(const w of weights){roll-=w.w;if(roll<=0)return w.r}
+  return weights[0].r;
+}
+
+function generateItem(floor,slot){
+  const rarity=rollRarity(floor);
+  const type=slot||ITEM_TYPES[Math.floor(Math.random()*ITEM_TYPES.length)];
+  const names=ITEM_NAMES[type]||ITEM_NAMES.sword;
+  const name=names[Math.floor(Math.random()*names.length)];
+  const mult=rarity.mult;
+  const stats=[];
+  const numStats=1+Math.floor(Math.random()*(rarity.weight>10?3:2));
+  const possibleStats=['str','dex','int','hp','mp','dmg','def','crit','lifesteal','manaRegen','hpRegen'];
+  const used=new Set();
+  for(let i=0;i<numStats;i++){
+    let s;do{s=possibleStats[Math.floor(Math.random()*possibleStats.length)]}while(used.has(s)&&used.size<possibleStats.length);
+    used.add(s);
+    const base=2+Math.floor(floor*1.5);
+    const val=Math.floor((base+Math.random()*base)*mult);
+    const statMult=s==='hp'||s==='mp'?.5:s==='dmg'?.8:1;
+    stats.push({name:s,value:Math.floor(val*statMult)});
+  }
+  const icons={sword:'⚔️',axe:'🪓',mace:'🔨',dagger:'🗡️',staff:'🪄',helmet:'🪖',chest:'👕',legs:'👖',boots:'👢',gloves:'🧤',shield:'🛡️',ring:'💍',amulet:'📿'};
+  return{id:Math.random().toString(36).substr(2,9),name,type,rarity,stats,icon:icons[type]||'⚔️',slot:type};
+}
+
+// ==================== ENEMY TYPES ====================
+const ENEMY_TYPES=[
+  {name:'Skeleton',hp:30,dmg:8,def:2,speed:60,color:'#888',size:14,xp:15,icon:'💀',drops:['common','common','uncommon']},
+  {name:'Zombie',hp:60,dmg:6,def:4,speed:35,color:'#4a6a3a',size:16,xp:20,icon:'🧟',drops:['common','uncommon']},
+  {name:'Ghost',hp:25,dmg:12,def:0,speed:75,color:'rgba(150,150,255,0.7)',size:13,xp:25,icon:'👻',drops:['common','uncommon','rare']},
+  {name:'Demon',hp:50,dmg:15,def:5,speed:55,color:'#cc2200',size:15,xp:35,icon:'👹',drops:['uncommon','rare']},
+  {name:'Dark Knight',hp:80,dmg:18,def:8,speed:45,color:'#444466',size:16,xp:45,icon:'⚫',drops:['uncommon','rare','rare']},
+  {name:'Wraith',hp:40,dmg:20,def:3,speed:65,color:'#664488',size:14,xp:40,icon:'🌑',drops:['rare','rare']},
+  {name:'Bone Dragon',hp:200,dmg:30,def:12,speed:30,color:'#aa4400',size:24,xp:150,icon:'🐉',drops:['rare','legendary'],boss:true},
+  {name:'Lich King',hp:350,dmg:40,def:18,speed:25,color:'#8844cc',size:28,xp:300,icon:'👑',drops:['legendary','legendary','mythic'],boss:true},
+];
+
+// ==================== GAME ====================
+const canvas=document.getElementById('gameCanvas');
+const ctx=canvas.getContext('2d');
+const miniCanvas=document.getElementById('minimap');
+const miniCtx=miniCanvas.getContext('2d');
+
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;miniCanvas.width=160;miniCanvas.height=160}
+window.addEventListener('resize',resize);resize();
+
+const FLOOR_NAMES=['The Crypt of Souls','The Chamber of Dread','The Abyssal Halls','The Shadow Warrens','The Forgotten Depths','The Hall of Torment','The Pit of Despair','The Dark Sanctum','The Infernal Abyss','The Throne of Shadows'];
+
+class Game {
+  constructor(){
+    this.audio=new AudioEngine();this.particles=new ParticleSystem();
+    this.state='menu';this.floor=1;this.camera={x:0,y:0};
+    this.keys={};this.mouse={x:0,y:0,down:false,right:false};
+    this.lastTime=0;this.stepTimer=0;this.attackCooldown=0;this.shootCooldown=0;
+    this.logMessages=[];this.logTimer=0;
+    this.shakeTimer=0;this.shakeIntensity=0;
+    this.floatingTexts=[];
+    this.time=0;
+  }
+  start(){
+    document.getElementById('startScreen').style.display='none';
+    this.audio.init();
+    this.state='playing';
+    this.floor=1;
+    this.player={
+      x:0,y:0,hp:100,maxHp:100,mp:50,maxMp:50,
+      xp:0,xpNext:100,level:1,
+      str:10,dex:10,int:10,
+      baseDmg:15,baseDef:5,
+      potions:5,potionCd:0,
+      inventory:[],equipped:{weapon:null,shield:null,helm:null,chest:null,legs:null,boots:null,gloves:null,ring:null,ring2:null},
+      animFrame:0,animTimer:0,dir:0,walking:false,
+      invuln:0,manaRegen:1,hpRegen:2,
+      critChance:5,lifesteal:0,
+      spells:{fireball:false,icebolt:false,holybolt:false}
+    };
+    this.player.inventory=[
+      generateItem(1,'ring'),generateItem(1,'ring')
+    ];
+    this.generateFloor();
+    this.updateUI();
+    this.lastTime=performance.now();
+  }
+  generateFloor(){
+    const size=30+this.floor*3;
+    this.dungeon=new Dungeon(size,size);
+    this.dungeon.generate(this.floor);
+    const pos=this.dungeon.randomFloor();
+    this.player.x=pos.x;this.player.y=pos.y;
+    this.player.invuln=2;
+    this.enemies=[];this.loot=[];this.projectiles=[];
+    this.dungeon.markVisible(this.player.x,this.player.y,8);
+    this.spawnEnemies();
+    const floorName=FLOOR_NAMES[Math.min(this.floor-1,FLOOR_NAMES.length-1)];
+    document.getElementById('floorDisplay').textContent=`Floor ${this.floor} — ${floorName}`;
+  }
+  spawnEnemies(){
+    const count=5+this.floor*2+Math.floor(Math.random()*3);
+    const available=ENEMY_TYPES.filter((e,i)=>{
+      if(i<4)return true;
+      if(i===4&&this.floor>=2)return Math.random()<.3;
+      if(i===5&&this.floor>=3)return Math.random()<.2;
+      if(i===6&&this.floor>=5)return Math.random()<.15;
+      if(i===7&&this.floor>=8)return Math.random()<.1;
+      return false;
+    });
+    for(let i=0;i<count;i++){
+      const pos=this.dungeon.randomFloor();
+      if(Math.abs(pos.x-this.player.x)<4&&Math.abs(pos.y-this.player.y)<4)continue;
+      const type=available[Math.floor(Math.random()*available.length)];
+      const scale=1+(this.floor-1)*.15;
+      this.enemies.push({
+        ...type,
+        x:pos.x,y:pos.y,
+        hp:Math.floor(type.hp*scale),
+        maxHp:Math.floor(type.hp*scale),
+        dmg:Math.floor(type.dmg*scale),
+        def:Math.floor(type.def*scale),
+        state:'idle',stateTimer:Math.random()*2,
+        aggroRange:type.boss?12:6+Math.floor(Math.random()*3),
+        attackRange:1.8,attackCooldown:0,
+        hitFlash:0,deathTimer:0,dead:false,
+        path:null,pathTimer:0
+      });
+    }
+    if(this.floor%5===0){
+      const bossType=ENEMY_TYPES[6+Math.floor(this.floor/5)];
+      if(bossType){
+        const pos=this.dungeon.randomFloor();
+        const scale=1+(this.floor-1)*.1;
+        this.enemies.push({
+          ...bossType,
+          x:pos.x,y:pos.y,
+          hp:Math.floor(bossType.hp*scale),
+          maxHp:Math.floor(bossType.hp*scale),
+          dmg:Math.floor(bossType.dmg*scale),
+          def:Math.floor(bossType.def*scale),
+          state:'idle',stateTimer:0,
+          aggroRange:10,attackRange:2,attackCooldown:0,
+          hitFlash:0,deathTimer:0,dead:false,
+          path:null,pathTimer:0
+        });
+      }
+    }
+  }
+  respawn(){
+    document.getElementById('deathScreen').style.display='none';
+    this.player.hp=this.player.maxHp;
+    this.player.mp=this.player.maxMp;
+    this.floor=Math.max(1,this.floor-1);
+    this.generateFloor();
+    this.updateUI();
+  }
+  update(dt){
+    if(this.state!=='playing')return;
+    this.time+=dt;
+    this.updatePlayer(dt);
+    // Reveal map around player — fog of war updates continuously
+    const p=this.player;
+    this.dungeon.markVisible(Math.round(p.x),Math.round(p.y),8);
+    this.updateEnemies(dt);
+    this.updateProjectiles(dt);
+    this.particles.update(dt);
+    this.updateCamera(dt);
+    this.updateUI();
+    this.updateParticles();
+    this.updateFloatingTexts(dt);
+    if(this.shakeTimer>0)this.shakeTimer-=dt;
+  }
+  updatePlayer(dt){
+    const p=this.player;
+    if(p.invuln>0)p.invuln-=dt;
+    if(p.potionCd>0)p.potionCd-=dt;
+    // Mana/HP regen
+    p.mp=Math.min(p.maxMp,p.mp+p.manaRegen*dt);
+    p.hp=Math.min(p.maxHp,p.hp+p.hpRegen*dt);
+    // Movement
+    let mx=0,my=0;
+    if(this.keys['KeyW']||this.keys['ArrowUp'])my=-1;
+    if(this.keys['KeyS']||this.keys['ArrowDown'])my=1;
+    if(this.keys['KeyA']||this.keys['ArrowLeft'])mx=-1;
+    if(this.keys['KeyD']||this.keys['ArrowRight'])mx=1;
+    if(mx||my){
+      const len=Math.sqrt(mx*mx+my*my);mx/=len;my/=len;
+      const speed=8*(1+p.dex*.005); // tiles per second — smooth movement, no snapping
+      // Smooth movement with sliding collision (no Math.round snapping)
+      const radius=0.3; // player collision radius in tile units
+      // Try X movement — check corners of bounding box at NEW position
+      let newX=p.x+mx*speed*dt;
+      const checkX=Math.floor(newX+radius), checkX2=Math.floor(newX+1-radius);
+      const checkY1=Math.floor(p.y+radius), checkY2=Math.floor(p.y+1-radius);
+      const canMoveX=this.dungeon.isWalkable(checkX,checkY1)&&this.dungeon.isWalkable(checkX2,checkY1)&&this.dungeon.isWalkable(checkX,checkY2)&&this.dungeon.isWalkable(checkX2,checkY2);
+      if(canMoveX){p.x=newX;}
+      // Try Y movement — check corners of bounding box at NEW position
+      let newY=p.y+my*speed*dt;
+      const checkY3=Math.floor(newY+radius), checkY4=Math.floor(newY+1-radius);
+      const checkX3=Math.floor(p.x+radius), checkX4=Math.floor(p.x+1-radius);
+      const canMoveY=this.dungeon.isWalkable(checkX3,checkY3)&&this.dungeon.isWalkable(checkX4,checkY3)&&this.dungeon.isWalkable(checkX3,checkY4)&&this.dungeon.isWalkable(checkX4,checkY4);
+      if(canMoveY){p.y=newY;}
+      // Clamp player to dungeon bounds
+      p.x=Math.max(0.3,Math.min(p.x,this.dungeon.width-0.7));
+      p.y=Math.max(0.3,Math.min(p.y,this.dungeon.height-0.7));
+      p.walking=true;
+      p.animTimer+=dt;
+      if(p.animTimer>.2){p.animTimer=0;p.animFrame=(p.animFrame+1)%4}
+      this.stepTimer-=dt;
+      if(this.stepTimer<=0){this.stepTimer=.4;this.audio.play('steps')}
+      // Update direction
+      if(Math.abs(mx)>Math.abs(my))p.dir=mx>0?1:3;
+      else p.dir=my>0?2:0;
+    }else{p.walking=false;p.animFrame=0}
+    // Attack
+    this.attackCooldown-=dt;
+    if(this.mouse.down&&this.attackCooldown<=0){
+      this.meleeAttack();
+      this.attackCooldown=.6/(1+(p.dex-10)*.02);
+    }
+    // Pick up
+    if(this.keys['KeyE']){
+      this.keys['KeyE']=false;
+      this.pickupLoot();
+    }
+    // Check stairs
+    if(this.dungeon.get(Math.round(p.x),Math.round(p.y))===TILE.STAIRS){
+      this.floor++;
+      this.generateFloor();
+      this.logMsg(`Descended to Floor ${this.floor}...`,'#ffd700');
+      this.audio.play('boss');
+    }
+    // Check loot on ground
+    for(let i=this.loot.length-1;i>=0;i--){
+      const l=this.loot[i];
+      const dx=l.x-p.x,dy=l.y-p.y;
+      if(dx*dx+dy*dy<2){
+        if(p.inventory.length<20){
+          p.inventory.push(l);
+          this.logMsg(`Picked up ${l.name} (${l.rarity})`,l.rarity==='legendary'?'#ff8800':l.rarity==='mythic'?'#ff00ff':'#aaa');
+          this.audio.play('pickup');
+          this.particles.emit(l.x*32,l.y*32,10,{colors:[l.rarity==='legendary'?'#ff8800':l.rarity==='mythic'?'#ff00ff':'#ffd700'],speed:60,life:.5,size:3,type:'spark'});
+          this.loot.splice(i,1);
+        }else{this.logMsg('Inventory full!','#ff4444')}
+      }
+    }
+  }
+  meleeAttack(){
+    const p=this.player;
+    const dirs=[{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+    const dir=dirs[p.dir];
+    const range=1.5;
+    const dmg=this.getDamage();
+    let hit=false;
+    for(const e of this.enemies){
+      if(e.dead)continue;
+      const dx=e.x-p.x,dy=e.y-p.y;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<range){
+        // Check if enemy is in attack direction
+        const dot=dx*dir.x+dy*dir.y;
+        if(dot>.5){
+          this.hitEnemy(e,dmg);
+          hit=true;
+          // Swing animation particles
+          const sx=p.x+dir.x*20,sy=p.y+dir.y*20;
+          this.particles.emit(sx*32+16,sy*32+16,5,{colors:['#ffaa00','#ff6600','#ffff00'],speed:100,life:.3,size:2,type:'spark',angle:Math.atan2(dir.y,dir.x),spread:.8});
+        }
+      }
+    }
+    this.audio.play('sword');
+    if(hit)this.shakeTimer=.1;this.shakeIntensity=3;
+  }
+  getDamage(){
+    const p=this.player;
+    let dmg=p.baseDmg;
+    for(const slot of Object.values(p.equipped)){
+      if(slot)for(const s of slot.stats){if(s.name==='dmg')dmg+=s.value}
+    }
+    dmg+=p.str*.5;
+    return Math.floor(dmg);
+  }
+  getDamageRandom(){
+    const base=this.getDamage();
+    const variance=.8+Math.random()*.4;
+    return Math.floor(base*variance);
+  }
+  hitEnemy(e,dmg){
+    const p=this.player;
+    const actualDmg=Math.max(1,dmg-e.def);
+    e.hp-=actualDmg;
+    e.hitFlash=.2;
+    e.state='chase';e.stateTimer=3;
+    this.audio.play('hit');
+    this.shakeTimer=.08;this.shakeIntensity=2;
+    // Blood particles
+    this.particles.emit(e.x*32+16,e.y*32+16,8,{colors:['#cc0000','#880000','#ff2200'],speed:80,life:.4,size:2,type:'circle'});
+    // Floating damage text
+    this.floatingTexts.push({x:e.x,y:e.y-.5,text:actualDmg,color:'#ff4400',life:1,vy:-40});
+    // Lifesteal
+    if(p.lifesteal>0){
+      const heal=Math.floor(actualDmg*p.lifesteal/100);
+      if(heal>0){p.hp=Math.min(p.maxHp,p.hp+heal)}
+    }
+    // Crit
+    if(Math.random()*100<p.critChance){
+      this.floatingTexts[this.floatingTexts.length-1].text+=' CRIT!';
+      this.floatingTexts[this.floatingTexts.length-1].color='#ffff00';
+    }
+    if(e.hp<=0){
+      e.dead=true;e.deathTimer=1;
+      p.xp+=e.xp;
+      this.audio.play('kill');
+      this.logMsg(`Defeated ${e.name} (+${e.xp} XP)`,'#44ff44');
+      this.particles.emit(e.x*32+16,e.y*32+16,20,{colors:['#ff4400','#ff8800','#ffcc00','#ffffff'],speed:120,life:.8,size:3,type:'spark'});
+      // Drop loot
+      if(Math.random()<.4+e.xp/200){
+        const dropType=e.drops[Math.floor(Math.random()*e.drops.length)];
+        const rarity=RARITIES.find(r=>r.name===dropType)||RARITIES[0];
+        const item=generateItem(this.floor);
+        item.rarity=rarity.name;
+        item.color=rarity.color;
+        this.loot.push({...item,x:e.x,y:e.y});
+      }
+      // Drop potion
+      if(Math.random()<.15){
+        this.loot.push({id:Math.random().toString(36).substr(2,6),name:'Health Potion',type:'potion',rarity:'common',icon:'🧪',slot:'potion',x:e.x,y:e.y});
+      }
+      // Check level up
+      while(p.xp>=p.xpNext){
+        p.xp-=p.xpNext;
+        p.level++;
+        p.xpNext=Math.floor(100*Math.pow(1.3,p.level-1));
+        p.maxHp+=15+p.str;
+        p.maxMp+=8+p.int*.5;
+        p.baseDmg+=3;
+        p.baseDef+=2;
+        p.hp=p.maxHp;p.mp=p.maxMp;
+        p.str+=2;p.dex+=2;p.int+=2;
+        this.audio.play('levelup');
+        document.getElementById('levelUp').style.display='block';
+        setTimeout(()=>document.getElementById('levelUp').style.display='none',2000);
+        this.particles.emit(p.x*32+16,p.y*32+16,40,{colors:['#ffd700','#ffaa00','#ff8800','#ffffff'],speed:150,life:1.5,size:4,type:'spark'});
+        this.logMsg(`LEVEL UP! Now level ${p.level}!`,'#ffd700');
+      }
+    }
+  }
+  updateEnemies(dt){
+    const p=this.player;
+    for(const e of this.enemies){
+      if(e.dead){e.deathTimer-=dt;continue}
+      if(e.hitFlash>0)e.hitFlash-=dt;
+      if(e.attackCooldown>0)e.attackCooldown-=dt;
+      e.stateTimer-=dt;
+      e.stepTimer=(e.stepTimer||0)-dt;
+      const dx=p.x-e.x,dy=p.y-e.y;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      if(e.state==='idle'){
+        if(dist<e.aggroRange){e.state='chase';e.stateTimer=5}
+        else{e.stateTimer=.5+Math.random()}
+      }
+      else if(e.state==='chase'){
+        if(dist>e.aggroRange*1.5){e.state='idle';e.stateTimer=2;continue}
+        if(dist<e.attackRange&&e.attackCooldown<=0){
+          // Attack player
+          if(p.invuln<=0){
+            const dmg=Math.max(1,e.dmg-p.baseDef);
+            p.hp-=dmg;
+            p.invuln=.3;
+            this.audio.play('hit');
+            this.shakeTimer=.15;this.shakeIntensity=4;
+            this.floatingTexts.push({x:p.x,y:p.y-.5,text:dmg,color:'#ff0000',life:1,vy:-40});
+            this.logMsg(`${e.name} hits you for ${dmg} damage!`,'#ff4444');
+            if(p.hp<=0){
+              p.hp=0;
+              this.audio.play('death');
+              document.getElementById('deathScreen').style.display='flex';
+              this.state='dead';
+              return;
+            }
+          }
+          e.attackCooldown=1.5;
+        }else if(e.stepTimer<=0){
+          // Move toward player — step-based like player, slower speed
+          const nx=e.x+dx/dist*e.speed*0.6*dt;
+          const ny=e.y+dy/dist*e.speed*0.6*dt;
+          // Collision sliding (same as player)
+          const ex=Math.round(e.x),ey=Math.round(e.y),er=0.3;
+          const mx=dx/dist,my=dy/dist;
+          let nx2=ex+mx*e.speed*0.6*dt,ny2=ey+my*e.speed*0.6*dt;
+          // Check X
+          if(!this.dungeon.isWalkable(Math.floor(nx2-er),Math.floor(ny2-er))&&
+             !this.dungeon.isWalkable(Math.floor(nx2+er),Math.floor(ny2-er))&&
+             !this.dungeon.isWalkable(Math.floor(nx2-er),Math.floor(ny2+er))&&
+             !this.dungeon.isWalkable(Math.floor(nx2+er),Math.floor(ny2+er))){
+            nx2=ex;
+          }else{e.x=nx2}
+          // Check Y
+          if(!this.dungeon.isWalkable(Math.floor(nx2-er),Math.floor(ny2-er))&&
+             !this.dungeon.isWalkable(Math.floor(nx2+er),Math.floor(ny2-er))&&
+             !this.dungeon.isWalkable(Math.floor(nx2-er),Math.floor(ny2+er))&&
+             !this.dungeon.isWalkable(Math.floor(nx2+er),Math.floor(ny2+er))){
+            ny2=ey;
+          }else{e.y=ny2}
+          e.stepTimer=0.12; // ~8 steps per second, slower than player's ~12
+        }
+      }else if(e.state==='flee'){
+        if(e.stateTimer<=0){e.state='idle';e.stateTimer=2}
+        else if(e.stepTimer<=0){
+          const nx=e.x-dx/dist*e.speed*0.4*dt;
+          const ny=e.y-dy/dist*e.speed*0.4*dt;
+          if(this.dungeon.isWalkable(Math.round(nx),Math.round(e.y)))e.x=nx;
+          if(this.dungeon.isWalkable(Math.round(e.x),Math.round(ny)))e.y=ny;
+          e.stepTimer=0.12;
+        }
+      }
+    }
+    // Remove dead enemies
+    this.enemies=this.enemies.filter(e=>!e.dead||e.deathTimer>0);
+  }
+  updateProjectiles(dt){
+    for(let i=this.projectiles.length-1;i>=0;i--){
+      const pr=this.projectiles[i];
+      pr.x+=pr.vx*dt;pr.y+=pr.vy*dt;
+      pr.life-=dt;
+      if(pr.life<=0){this.projectiles.splice(i,1);continue}
+      // Hit enemies
+      if(pr.target==='enemy'){
+        for(const e of this.enemies){
+          if(e.dead)continue;
+          const dx=e.x-pr.x,dy=e.y-pr.y;
+          if(dx*dx+dy*dy<1){
+            const dmg=pr.dmg;
+            this.hitEnemy(e,dmg);
+            this.particles.emit(e.x*32+16,e.y*32+16,10,{colors:[pr.color],speed:80,life:.3,size:2,type:'spark'});
+            this.projectiles.splice(i,1);break;
+          }
+        }
+      }
+      // Hit player
+      if(pr.target==='player'){
+        const dx=this.player.x-pr.x,dy=this.player.y-pr.y;
+        if(dx*dx+dy*dy<1){
+          this.player.hp-=pr.dmg;
+          this.shakeTimer=.1;this.shakeIntensity=3;
+          this.floatingTexts.push({x:this.player.x,y:this.player.y-.5,text:pr.dmg,color:'#ff0000',life:1,vy:-40});
+          this.projectiles.splice(i,1);
+          if(this.player.hp<=0){
+            this.player.hp=0;this.audio.play('death');
+            document.getElementById('deathScreen').style.display='flex';this.state='dead';
+          }
+        }
+      }
+      // Wall collision
+      if(!this.dungeon.isWalkable(Math.round(pr.x),Math.round(pr.y))){
+        this.particles.emit(pr.x*32+16,pr.y*32+16,5,{colors:[pr.color],speed:40,life:.2,size:2,type:'circle'});
+        this.projectiles.splice(i,1);
+      }
+    }
+  }
+  updateCamera(dt){
+    const targetX=this.player.x*32+16-canvas.width/2;
+    const targetY=this.player.y*32+16-canvas.height/2;
+    this.camera.x+=(targetX-this.camera.x)*5*dt;
+    this.camera.y+=(targetY-this.camera.y)*5*dt;
+    if(this.shakeTimer>0){
+      this.camera.x+=(Math.random()-.5)*this.shakeIntensity*2;
+      this.camera.y+=(Math.random()-.5)*this.shakeIntensity*2;
+    }
+  }
+  updateParticles(){
+    // Ambient particles
+    if(Math.random()<.1){
+      const wx=this.camera.x+Math.random()*canvas.width;
+      const wy=this.camera.y+Math.random()*canvas.height;
+      const wx2=wx+this.camera.x,wy2=wy+this.camera.y;
+      const tx=Math.floor(wx2/32),ty=Math.floor(wy2/32);
+      if(this.dungeon.get(tx,ty)!==TILE.WALL){
+        this.particles.emit(wx2,wy2,1,{colors:['#ff4400','#ff8800'],speed:10,life:2,size:1,type:'ember',angle:Math.PI/2,spread:1});
+      }
+    }
+  }
+  updateFloatingTexts(dt){
+    for(let i=this.floatingTexts.length-1;i>=0;i--){
+      const ft=this.floatingTexts[i];
+      ft.y+=ft.vy*dt;ft.life-=dt;
+      if(ft.life<=0)this.floatingTexts.splice(i,1);
+    }
+  }
+  pickupLoot(){
+    const p=this.player;
+    for(let i=this.loot.length-1;i>=0;i--){
+      const l=this.loot[i];
+      const dx=l.x-p.x,dy=l.y-p.y;
+      if(dx*dx+dy*dy<4){
+        if(l.slot==='potion'){
+          p.potions++;
+          this.logMsg('Picked up Health Potion','#44ff44');
+          this.audio.play('pickup');
+          this.loot.splice(i,1);
+        }else if(p.inventory.length<20){
+          p.inventory.push(l);
+          this.logMsg(`Picked up ${l.name}`,'#aaa');
+          this.audio.play('pickup');
+          this.loot.splice(i,1);
+        }else{this.logMsg('Inventory full!','#ff4444')}
+        return;
+      }
+    }
+  }
+  equipItem(idx){
+    const p=this.player;
+    const item=p.inventory[idx];
+    if(!item)return;
+    // Map item type to equipment slot
+    const slotMap={sword:'weapon',axe:'weapon',mace:'weapon',dagger:'weapon',staff:'weapon',helmet:'helm',chest:'chest',legs:'legs',boots:'boots',gloves:'gloves',shield:'shield',ring:'ring'};
+    const slot=slotMap[item.type]||item.slot;
+    if(p.equipped[slot]){
+      p.inventory[idx]=p.equipped[slot];
+      p.equipped[slot]=item;
+    }else{
+      p.equipped[slot]=item;
+      p.inventory.splice(idx,1);
+    }
+    this.recalcStats();
+    this.renderInventory();
+    this.updateUI();
+  }
+  recalcStats(){
+    const p=this.player;
+    p.manaRegen=1+p.int*.1;
+    p.hpRegen=2+p.str*.05;
+    p.critChance=5+p.dex*.3;
+    p.lifesteal=0;
+    p.baseDmg=15;
+    p.baseDef=5;
+    for(const slot of Object.values(p.equipped)){
+      if(slot)for(const s of slot.stats){
+        if(s.name==='manaRegen')p.manaRegen+=s.value;
+        if(s.name==='hpRegen')p.hpRegen+=s.value;
+        if(s.name==='crit')p.critChance+=s.value;
+        if(s.name==='lifesteal')p.lifesteal+=s.value;
+        if(s.name==='str')p.str+=s.value;
+        if(s.name==='dex')p.dex+=s.value;
+        if(s.name==='int')p.int+=s.value;
+        if(s.name==='hp')p.maxHp+=s.value;
+        if(s.name==='mp')p.maxMp+=s.value;
+        if(s.name==='dmg')p.baseDmg+=s.value;
+        if(s.name==='def')p.baseDef+=s.value;
+      }
+    }
+    // Shield gives extra defense
+    if(p.equipped.shield){
+      for(const s of p.equipped.shield.stats){
+        if(s.name==='def')p.baseDef+=Math.floor(s.value*0.5);
+      }
+    }
+  }
+  usePotion(idx){
+    const p=this.player;
+    if(idx<5){
+      if(p.potions>0&&p.potionCd<=0){
+        p.potions--;
+        const heal=Math.floor(p.maxHp*.4);
+        p.hp=Math.min(p.maxHp,p.hp+heal);
+        this.audio.play('heal');
+        this.particles.emit(p.x*32+16,p.y*32+16,15,{colors:['#44ff44','#88ff44','#aaffaa'],speed:60,life:.6,size:3,type:'circle'});
+        this.floatingTexts.push({x:p.x,y:p.y-.5,text:'+'+heal,color:'#44ff44',life:1.5,vy:-30});
+        this.logMsg(`Used Health Potion (+${heal} HP)`,'#44ff44');
+        p.potionCd=1;
+      }
+    }
+  }
+  logMsg(text,color){
+    this.logMessages.push({text,color,time:4});
+    const el=document.getElementById('combatLog');
+    const div=document.createElement('div');
+    div.className='log-msg';div.style.color=color;div.textContent=text;
+    el.appendChild(div);
+    if(el.children.length>8)el.removeChild(el.firstChild);
+    setTimeout(()=>{if(div.parentNode)div.parentNode.removeChild(div)},4000);
+  }
+  updateUI(){
+    const p=this.player;
+    // Old bars (hidden but still updated for compatibility)
+    document.getElementById('hpBar').style.width=(p.hp/p.maxHp*100)+'%';
+    document.getElementById('hpText').textContent=`${Math.floor(p.hp)}/${p.maxHp}`;
+    document.getElementById('mpBar').style.width=(p.mp/p.maxMp*100)+'%';
+    document.getElementById('mpText').textContent=`${Math.floor(p.mp)}/${p.maxMp}`;
+    document.getElementById('xpBar').style.width=(p.xp/p.xpNext*100)+'%';
+    document.getElementById('xpText').textContent=`${p.xp}/${p.xpNext}`;
+    document.getElementById('levelNum').textContent=p.level;
+    document.getElementById('statStr').textContent=p.str;
+    document.getElementById('statDex').textContent=p.dex;
+    document.getElementById('statInt').textContent=p.int;
+    document.getElementById('statDmg').textContent=`${this.getDamage()-5}-${this.getDamage()+5}`;
+    document.getElementById('statDef').textContent=p.baseDef;
+    document.getElementById('statAtkSpd').textContent=(1+(p.dex-10)*.02).toFixed(1);
+    // New HUD orbs
+    document.getElementById('hpOrbFill').style.height=(p.hp/p.maxHp*100)+'%';
+    document.getElementById('hpOrbText').textContent=`${Math.floor(p.hp)}/${p.maxHp}`;
+    document.getElementById('mpOrbFill').style.height=(p.mp/p.maxMp*100)+'%';
+    document.getElementById('mpOrbText').textContent=`${Math.floor(p.mp)}/${p.maxMp}`;
+    document.getElementById('xpBarHud').style.width=(p.xp/p.xpNext*100)+'%';
+    document.getElementById('xpTextHud').textContent=`${p.xp}/${p.xpNext} XP`;
+    document.getElementById('levelNumHud').textContent=p.level;
+    document.getElementById('potionCount').textContent=p.potions;
+    // Equipment top bar
+    const eqSlots=['helm','chest','weapon','shield','legs','boots','gloves','ring','ring2'];
+    const slotIcons={helm:'🪖',chest:'👕',weapon:'⚔️',shield:'🛡️',legs:'👖',boots:'👢',gloves:'🧤',ring:'💍',ring2:'💍'};
+    const slotIds=['eqHelm','eqChest','eqWeapon','eqShield','eqLegs','eqBoots','eqGloves','eqRingL','eqRingR'];
+    for(let i=0;i<slotIds.length;i++){
+      const el=document.getElementById(slotIds[i]);
+      if(!el)continue;
+      const slot=eqSlots[i];
+      const item=p.equipped[slot];
+      el.textContent=item?item.icon:(slotIcons[slot]||'·');
+      el.className='equip-slot'+(item?' filled':'');
+      el.title=item?`${item.name} (${item.rarity})`:slot;
+    }
+  }
+  toggleEquipPanel(){
+    const panel=document.getElementById('equipPanel');
+    if(panel.style.display==='none'||!panel.style.display){
+      panel.style.display='block';
+      this.renderEquipPanel();
+    }else{
+      panel.style.display='none';
+    }
+  }
+  showEquipPanel(){
+    this.toggleEquipPanel();
+  }
+  renderEquipPanel(){
+    const p=this.player;
+    const slotNames={weapon:'Weapon (Right Hand)',shield:'Shield (Left Hand)',helm:'Helm',chest:'Chest Armor',legs:'Legs',boots:'Boots',gloves:'Gloves',ring:'Ring (Left)',ring2:'Ring (Right)'};
+    const slotIcons={weapon:'⚔️',shield:'🛡️',helm:'🪖',chest:'👕',legs:'👖',boots:'👢',gloves:'🧤',ring:'💍',ring2:'💍'};
+    const container=document.getElementById('equipSlots');
+    container.innerHTML='';
+    for(const slot of Object.keys(slotNames)){
+      const item=p.equipped[slot];
+      const div=document.createElement('div');
+      div.style.cssText='display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(0,0,0,.3);border:1px solid #3a2a1a;border-radius:3px;cursor:pointer;font-size:12px';
+      div.innerHTML=`<span style="font-size:16px">${item?item.icon:slotIcons[slot]||'·'}</span><span style="flex:1;color:${item?(item.rarity==='legendary'?'#ff8800':item.rarity==='rare'?'#ffff00':'#aaa'):'#666'}">${item?item.name:slotNames[slot]}${item?' ('+item.rarity+')':''}</span>${item?'<span style="color:#ff4444;font-size:10px">[Unequip]</span>':'<span style="color:#666;font-size:10px">[Empty]</span>'}`;
+      if(item){
+        div.onclick=()=>{
+          const idx=p.inventory.findIndex(it=>it===item);
+          if(idx>=0){p.inventory[idx]=item;p.equipped[slot]=null;this.recalcStats();this.renderEquipPanel();this.renderInventory();this.updateUI()}
+        };
+      }
+      container.appendChild(div);
+    }
+    // Character stats
+    const stats=document.getElementById('charStats');
+    stats.innerHTML=`<div style="color:#ffd700;margin-bottom:4px">Stats:</div>
+      <div>HP: ${Math.floor(p.hp)}/${p.maxHp}</div>
+      <div>MP: ${Math.floor(p.mp)}/${p.maxMp}</div>
+      <div>DMG: ${this.getDamage()-5}-${this.getDamage()+5}</div>
+      <div>DEF: ${p.baseDef}</div>
+      <div>Crit: ${p.critChance.toFixed(1)}%</div>
+      <div>Atk Spd: ${(1+(p.dex-10)*.02).toFixed(1)}</div>
+      <div>HP Regen: ${p.hpRegen.toFixed(1)}/s</div>
+      <div>MP Regen: ${p.manaRegen.toFixed(1)}/s</div>`;
+  }
+  castFireball(){
+    const p=this.player;
+    const cost=15;
+    if(p.mp<cost){this.logMsg('Not enough mana!','#4488ff');return}
+    p.mp-=cost;
+    // Find direction from mouse
+    const mx=this.mouse.x-canvas.width/2;
+    const my=this.mouse.y-canvas.height/2;
+    const angle=Math.atan2(my,mx);
+    const speed=200;
+    this.projectiles.push({
+      x:p.x,y:p.y,
+      vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,
+      life:2,dmg:Math.floor(10+p.int*3+this.getDamage()*0.5),
+      color:'#ff4400',type:'fireball',size:6
+    });
+    this.audio.play('fire');
+    this.particles.emit(p.x*32+16,p.y*32+16,10,{colors:['#ff4400','#ff8800','#ffcc00'],speed:80,life:.5,size:3,type:'circle'});
+    this.logMsg(`Cast Fireball! (${cost} MP)`,'#ff8800');
+  }
+  renderInventory(){
+    const el=document.getElementById('inventory');
+    el.innerHTML='';
+    // Potion slots
+    for(let i=0;i<5;i++){
+      const slot=document.createElement('div');
+      slot.className='inv-slot';
+      slot.textContent=i<this.player.potions?'🧪':'·';
+      slot.style.opacity=i<this.player.potions?1:.3;
+      slot.onclick=()=>this.usePotion(i);
+      slot.title=`Potion (${5-i>=0?this.player.potions:0} remaining) [${i+1}]`;
+      el.appendChild(slot);
+    }
+    // Equipment slots
+    const eqSlots=['weapon','shield','helm','chest','legs','boots','gloves','ring','ring2'];
+    for(const slot of eqSlots){
+      const item=this.player.equipped[slot];
+      const div=document.createElement('div');
+      div.className='inv-slot equipped';
+      div.textContent=item?item.icon:'·';
+      div.style.opacity=item?1:.4;
+      div.title=item?`${item.name} (${item.rarity})`:`${slot} (empty)`;
+      div.onclick=()=>{
+        if(item){
+          // Unequip
+          const idx=this.player.inventory.findIndex(i=>i===item);
+          if(idx>=0){this.player.inventory[idx]=item;this.player.equipped[slot]=null;this.recalcStats();this.renderInventory()}
+        }
+      };
+      el.appendChild(div);
+    }
+    // Inventory items
+    for(let i=0;i<20;i++){
+      const item=this.player.inventory[i];
+      const div=document.createElement('div');
+      div.className='inv-slot';
+      div.textContent=item?item.icon:'·';
+      div.style.opacity=item?1:.3;
+      if(item){
+        div.classList.add('rarity-'+item.rarity);
+        div.title=`${item.name}\n${item.rarity} ${item.type}\n${item.stats.map(s=>STAT_NAMES[s.name]||s.name+': '+s.value).join('\n')}`;
+        div.onmouseenter=(e)=>this.showTooltip(e,item);
+        div.onmouseleave=()=>this.hideTooltip();
+        div.onclick=()=>this.equipItem(i);
+      }
+      el.appendChild(div);
+    }
+  }
+  showTooltip(e,item){
+    const tt=document.getElementById('tooltip');
+    tt.innerHTML=`<div class="item-name" style="color:${RARITIES.find(r=>r.name===item.rarity)?.color||'#fff'}">${item.name}</div><div class="item-type">${item.type} (${item.rarity})</div><div class="item-stats">${item.stats.map(s=>`<span style="color:#44ff44">+${s.value}</span> ${STAT_NAMES[s.name]||s.name}`).join('<br>')}</div>${item.slot!=='potion'?'<div class="item-desc">Click to equip</div>':''}`;
+    tt.style.display='block';
+    tt.style.left=(e.clientX+15)+'px';
+    tt.style.top=(e.clientY-10)+'px';
+  }
+  hideTooltip(){document.getElementById('tooltip').style.display='none'}
+  render(){
+    if(!this.dungeon||this.state!=='playing')return;
+    ctx.fillStyle='#0a0505';ctx.fillRect(0,0,canvas.width,canvas.height);
+    const camX=this.camera.x+Math.sin(this.time*3)*this.shakeIntensity;
+    const camY=this.camera.y+Math.cos(this.time*3)*this.shakeIntensity;
+    const p=this.player;
+    // Calculate visible tile range
+    const startTX=Math.max(0,Math.floor(camX/32)-1);
+    const startTY=Math.max(0,Math.floor(camY/32)-1);
+    const endTX=Math.min(this.dungeon.width,Math.ceil((camX+canvas.width)/32)+1);
+    const endTY=Math.min(this.dungeon.height,Math.ceil((camY+canvas.height)/32)+1);
+    // Draw tiles
+    for(let ty=startTY;ty<endTY;ty++){
+      for(let tx=startTX;tx<endTX;tx++){
+        const tile=this.dungeon.get(tx,ty);
+        const screenX=tx*32-camX,screenY=ty*32-camY;
+        if(screenX<-32||screenX>canvas.width+32||screenY<-32||screenY>canvas.height+32)continue;
+        const colors=TILE_COLORS[tile]||TILE_COLORS[TILE.WALL];
+        const ci=(tx+ty)%colors.length;
+        ctx.fillStyle=colors[ci];
+        ctx.fillRect(screenX,screenY,33,33);
+        // Tile details
+        if(tile===TILE.WALL){
+          ctx.fillStyle='rgba(0,0,0,.3)';
+          ctx.fillRect(screenX,screenY+30,33,3);
+          ctx.fillStyle='rgba(255,255,255,.03)';
+          ctx.fillRect(screenX,screenY,33,2);
+        }
+        if(tile===TILE.FLOOR){
+          if((tx*7+ty*13)%11===0){
+            ctx.fillStyle='rgba(0,0,0,.15)';
+            ctx.fillRect(screenX+5,screenY+8,3,3);
+          }
+        }
+        if(tile===TILE.WATER){
+          const wave=Math.sin(this.time*2+tx*.5+ty*.3)*.15;
+          ctx.fillStyle=`rgba(30,60,120,${.5+wave})`;
+          ctx.fillRect(screenX+1,screenY+1,31,31);
+          ctx.fillStyle=`rgba(60,100,180,${.2+wave})`;
+          ctx.fillRect(screenX+5+Math.sin(this.time+tx)*3,screenY+10,20,2);
+        }
+        if(tile===TILE.STAIRS){
+          ctx.fillStyle='#ffd700';
+          ctx.font='20px serif';
+          ctx.textAlign='center';
+          ctx.fillText('▼',screenX+16,screenY+24);
+          ctx.shadowColor='#ffd700';ctx.shadowBlur=10;
+          ctx.fillText('▼',screenX+16,screenY+24);
+          ctx.shadowBlur=0;
+        }
+        // Fog of war
+        const explored=this.dungeon.explored[this.dungeon.idx(tx,ty)];
+        const visible=this.dungeon.visited[this.dungeon.idx(tx,ty)];
+        if(!explored){
+          ctx.fillStyle='#000';ctx.fillRect(screenX,screenY,33,33);
+          continue;
+        }
+        if(!visible){
+          ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(screenX,screenY,33,33);
+        }
+      }
+    }
+    // Draw loot
+    for(const l of this.loot){
+      const sx=l.x*32-camX+16,sy=l.y*32-camY+16;
+      if(sx<-20||sx>canvas.width+20||sy<-20||sy>canvas.height+20)continue;
+      const bob=Math.sin(this.time*3+l.x+l.y)*3;
+      const rarity=RARITIES.find(r=>r.name===l.rarity);
+      ctx.shadowColor=rarity?rarity.color:'#fff';ctx.shadowBlur=8;
+      ctx.font='18px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(l.icon,sx,sy+bob);
+      ctx.shadowBlur=0;
+    }
+    // Draw enemies
+    for(const e of this.enemies){
+      if(e.dead&&e.deathTimer<=0)continue;
+      const sx=e.x*32-camX+16,sy=e.y*32-camY+16;
+      if(sx<-40||sx>canvas.width+40||sy<-40||sy>canvas.height+40)continue;
+      const visible=this.dungeon.visited[this.dungeon.idx(Math.round(e.x),Math.round(e.y))];
+      if(!visible)continue;
+      const alpha=e.dead?e.deathTimer:1;
+      ctx.globalAlpha=alpha;
+      // Shadow
+      ctx.fillStyle='rgba(0,0,0,.4)';
+      ctx.beginPath();ctx.ellipse(sx,sy+e.size*.6,e.size*.7,e.size*.3,0,0,Math.PI*2);ctx.fill();
+      // Body
+      if(e.hitFlash>0){
+        ctx.fillStyle='#ffffff';
+      }else{
+        ctx.fillStyle=e.color;
+      }
+      // Draw enemy shape
+      if(e.boss){
+        ctx.shadowColor=e.color;ctx.shadowBlur=15;
+      }
+      ctx.beginPath();
+      ctx.arc(sx,sy,e.size*.6,0,Math.PI*2);
+      ctx.fill();
+      ctx.shadowBlur=0;
+      // Eyes
+      ctx.fillStyle=e.boss?'#ff0000':'#ff4400';
+      ctx.beginPath();ctx.arc(sx-e.size*.2,sy-e.size*.15,2,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(sx+e.size*.2,sy-e.size*.15,2,0,Math.PI*2);ctx.fill();
+      // HP bar
+      if(!e.dead&&e.hp<e.maxHp){
+        const barW=e.size*1.5;
+        ctx.fillStyle='#333';ctx.fillRect(sx-barW/2,sy-e.size-8,barW,4);
+        ctx.fillStyle='#cc0000';ctx.fillRect(sx-barW/2,sy-e.size-8,barW*(e.hp/e.maxHp),4);
+      }
+      // Boss name
+      if(e.boss){
+        ctx.fillStyle=e.color;ctx.font='bold 11px serif';ctx.textAlign='center';
+        ctx.fillText(e.name,sx,sy-e.size-12);
+      }
+      ctx.globalAlpha=1;
+    }
+    // Draw player
+    {
+      const sx=p.x*32-camX+16,sy=p.y*32-camY+16;
+      // Shadow
+      ctx.fillStyle='rgba(0,0,0,.4)';
+      ctx.beginPath();ctx.ellipse(sx,sy+12,10,5,0,0,Math.PI*2);ctx.fill();
+      // Body
+      const walkOffset=p.walking?Math.sin(this.time*10)*3:0;
+      // Legs (if equipped)
+      if(p.equipped.legs){
+        ctx.fillStyle=p.equipped.legs.type==='chest'||p.equipped.legs.type==='legs'?'#3a3a5a':'#2a2a3a';
+        ctx.fillRect(sx-5,sy+2,4,8);ctx.fillRect(sx+1,sy+2,4,8);
+      }
+      // Torso/armor
+      ctx.fillStyle=p.equipped.chest?'#4a4a6a':'#2a4a8a';
+      ctx.beginPath();ctx.arc(sx,sy+walkOffset*.3,11,0,Math.PI*2);ctx.fill();
+      // Boots
+      if(p.equipped.boots){
+        ctx.fillStyle='#1a1a1a';
+        ctx.fillRect(sx-6,sy+8,5,4);ctx.fillRect(sx+1,sy+8,5,4);
+      }
+      // Head
+      ctx.fillStyle='#d4a574';
+      ctx.beginPath();ctx.arc(sx,sy-8+walkOffset*.2,7,0,Math.PI*2);ctx.fill();
+      // Helmet
+      if(p.equipped.helm){
+        ctx.fillStyle='#5a5a7a';
+        ctx.beginPath();ctx.arc(sx,sy-10+walkOffset*.2,8,Math.PI,0);ctx.fill();
+        ctx.fillRect(sx-8,sy-10+walkOffset*.2,16,2);
+      }
+      // Gloves
+      if(p.equipped.gloves){
+        ctx.fillStyle='#3a3a3a';
+        ctx.beginPath();ctx.arc(sx-10,sy+3,3,0,Math.PI*2);ctx.fill();
+        ctx.beginPath();ctx.arc(sx+10,sy+3,3,0,Math.PI*2);ctx.fill();
+      }
+      // Shield (left hand)
+      if(p.equipped.shield){
+        ctx.fillStyle='#6a6a8a';
+        ctx.beginPath();ctx.ellipse(sx-12,sy+2,6,8,0,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='#8a8aaa';ctx.lineWidth=1;
+        ctx.beginPath();ctx.ellipse(sx-12,sy+2,6,8,0,0,Math.PI*2);ctx.stroke();
+      }
+      // Weapon direction indicator (right hand)
+      const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
+      const dir=dirs[p.dir];
+      if(p.equipped.weapon){
+        // Draw weapon on right side
+        const wx=sx+dir.x*16,sy2=sy+dir.y*16+5;
+        ctx.strokeStyle='#aaa';ctx.lineWidth=3;
+        ctx.beginPath();ctx.moveTo(sx+dir.x*8,sy+dir.y*8+5);ctx.lineTo(wx,sy2);ctx.stroke();
+        ctx.fillStyle='#ccc';
+        ctx.beginPath();ctx.arc(wx,sy2,4,0,Math.PI*2);ctx.fill();
+      } else {
+        ctx.strokeStyle='#888';ctx.lineWidth=2;
+        ctx.beginPath();ctx.moveTo(sx+dir.x*8,sy+dir.y*8+5);ctx.lineTo(sx+dir.x*22,sy+dir.y*22+5);ctx.stroke();
+        ctx.fillStyle='#aaa';
+        ctx.beginPath();ctx.arc(sx+dir.x*22,sy+dir.y*22+5,3,0,Math.PI*2);ctx.fill();
+      }
+      // Glow
+      ctx.shadowColor='#4488ff';ctx.shadowBlur=12;
+      ctx.strokeStyle='rgba(68,136,255,.3)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(sx,sy+walkOffset*.3,14,0,Math.PI*2);ctx.stroke();
+      ctx.shadowBlur=0;
+    }
+    // Draw projectiles
+    for(const pr of this.projectiles){
+      const sx=pr.x*32-camX+16,sy=pr.y*32-camY+16;
+      ctx.fillStyle=pr.color;ctx.shadowColor=pr.color;ctx.shadowBlur=10;
+      ctx.beginPath();ctx.arc(sx,sy,4,0,Math.PI*2);ctx.fill();
+      ctx.shadowBlur=0;
+      // Trail
+      this.particles.emit(sx,sy,1,{colors:[pr.color],speed:20,life:.2,size:2,type:'circle'});
+    }
+    // Draw particles
+    this.particles.draw(ctx,camX,camY);
+    // Draw floating texts
+    for(const ft of this.floatingTexts){
+      const sx=ft.x*32-camX+16,sy=ft.y*32-camY;
+      ctx.globalAlpha=Math.min(1,ft.life);
+      ctx.fillStyle=ft.color;ctx.font='bold 14px serif';ctx.textAlign='center';
+      ctx.shadowColor='#000';ctx.shadowBlur=4;
+      ctx.fillText(ft.text,sx,sy);
+      ctx.shadowBlur=0;ctx.globalAlpha=1;
+    }
+    // Ambient lighting overlay
+    const gradient=ctx.createRadialGradient(
+      p.x*32-camX+16,p.y*32-camY+16,50,
+      p.x*32-camX+16,p.y*32-camY+16,350
+    );
+    gradient.addColorStop(0,'rgba(0,0,0,0)');
+    gradient.addColorStop(.5,'rgba(0,0,0,.3)');
+    gradient.addColorStop(1,'rgba(0,0,0,.7)');
+    ctx.fillStyle=gradient;ctx.fillRect(0,0,canvas.width,canvas.height);
+    // Vignette
+    const vig=ctx.createRadialGradient(canvas.width/2,canvas.height/2,canvas.width*.3,canvas.width/2,canvas.height/2,canvas.width*.7);
+    vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.5)');
+    ctx.fillStyle=vig;ctx.fillRect(0,0,canvas.width,canvas.height);
+    // Render minimap
+    this.renderMinimap();
+  }
+  renderMinimap(){
+    miniCtx.fillStyle='#000';miniCtx.fillRect(0,0,160,160);
+    const scale=3;
+    const cx=Math.floor(this.player.x);
+    const cy=Math.floor(this.player.y);
+    for(let dy=-25;dy<25;dy++){
+      for(let dx=-25;dx<25;dx++){
+        const tx=cx+dx,ty=cy+dy;
+        if(tx<0||tx>=this.dungeon.width||ty<0||ty>=this.dungeon.height)continue;
+        if(!this.dungeon.explored[this.dungeon.idx(tx,ty)])continue;
+        const tile=this.dungeon.get(tx,ty);
+        const sx=80+dx*scale,sy=80+dy*scale;
+        if(tile===TILE.WALL)miniCtx.fillStyle='#1a1210';
+        else if(tile===TILE.WATER)miniCtx.fillStyle='#0a1530';
+        else if(tile===TILE.STAIRS)miniCtx.fillStyle='#ffd700';
+        else miniCtx.fillStyle='#2a2018';
+        miniCtx.fillRect(sx,sy,scale,scale);
+      }
+    }
+    // Enemies on minimap
+    for(const e of this.enemies){
+      if(e.dead)continue;
+      const dx=e.x-cx,dy=e.y-cy;
+      if(Math.abs(dx)>25||Math.abs(dy)>25)continue;
+      miniCtx.fillStyle=e.boss?'#ff0000':'#ff4400';
+      miniCtx.fillRect(80+dx*scale-1,80+dy*scale-1,3,3);
+    }
+    // Player on minimap
+    miniCtx.fillStyle='#4488ff';
+    miniCtx.fillRect(79,79,3,3);
+  }
+}
+
+const game=new Game();
+
+// ==================== INPUT ====================
+document.addEventListener('keydown',e=>{
+  game.keys[e.code]=true;
+  if(e.code==='Tab'){e.preventDefault();const sp=document.getElementById('statsPanel');sp.style.display=sp.style.display==='none'?'block':'none'}
+  if(e.code==='KeyI'||e.code==='KeyE'){e.preventDefault();game.renderInventory();game.showEquipPanel()}
+  if(e.code==='Digit1')game.usePotion(0);
+  if(e.code==='Digit2')game.usePotion(1);
+  if(e.code==='Digit3')game.usePotion(2);
+  if(e.code==='Digit4')game.usePotion(3);
+  if(e.code==='Digit5')game.usePotion(4);
+});
+document.addEventListener('keyup',e=>{game.keys[e.code]=false});
+canvas.addEventListener('mousemove',e=>{game.mouse.x=e.clientX;game.mouse.y=e.clientY});
+canvas.addEventListener('mousedown',e=>{
+  if(e.button===0)game.mouse.down=true;
+  // Left click = melee attack
+  if(e.button===0&&game.state==='playing'){
+    const p=game.player;
+    const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
+    const dir=dirs[p.dir];
+    const attackX=p.x+dir.x*1.5;
+    const attackY=p.y+dir.y*1.5;
+    // Check enemies in range
+    for(const e of game.enemies){
+      if(e.dead)continue;
+      const dx=e.x-attackX,dy=e.y-attackY;
+      if(Math.sqrt(dx*dx+dy*dy)<1.5){
+        const dmg=game.getDamageRandom();
+        const crit=Math.random()*100<p.critChance;
+        const finalDmg=crit?Math.floor(dmg*2):dmg;
+        e.hp-=finalDmg;
+        e.hitFlash=0.2;
+        e.attackCooldown=0.5;
+        game.audio.play('hit');
+        game.particles.emit(e.x*32+16,e.y*32+16,8,{colors:['#ff4400','#ffaa00'],speed:80,life:.4,size:3,type:'circle'});
+        game.floatingTexts.push({x:e.x,y:e.y-.5,text:finalDmg,color:crit?'#ffff00':'#ff4400',life:1.2,vy:-35});
+        if(crit){game.floatingTexts.push({x:e.x,y:e.y-.8,text:'CRIT!',color:'#ffff00',life:.8,vy:-20})}
+        if(e.hp<=0){
+          e.dead=true;
+          game.audio.play('death');
+          game.particles.emit(e.x*32+16,e.y*32+16,20,{colors:[e.color,'#888','#aaa'],speed:100,life:.8,size:4,type:'circle'});
+          game.xpGain+=e.xp;
+          game.logMsg(`Killed ${e.name} (+${e.xp} XP)`,'#ffff44');
+          // Loot drop
+          if(Math.random()<.4){
+            game.loot.push({x:e.x,y:e.y,item:generateItem(game.floor),life:60});
+          }
+        }
+        // Lifesteal
+        if(p.lifesteal>0){
+          const heal=Math.floor(finalDmg*p.lifesteal/100);
+          if(heal>0){p.hp=Math.min(p.maxHp,p.hp+heal)}
+        }
+        break;
+      }
+    }
+  }
+});
+canvas.addEventListener('mouseup',e=>{if(e.button===0)game.mouse.down=false});
+canvas.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  if(game.state!=='playing')return;
+  // Right click = fireball (costs mana)
+  const p=game.player;
+  const manaCost=10;
+  if(p.mp<manaCost){
+    game.floatingTexts.push({x:p.x,y:p.y-1,text:'Not enough mana!',color:'#4488ff',life:1,vy:-20});
+    return;
+  }
+  p.mp-=manaCost;
+  const worldX=e.clientX+game.camera.x;
+  const worldY=e.clientY+game.camera.y;
+  const tx=worldX/32,ty=worldY/32;
+  const dx=tx-p.x,dy=ty-p.y;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist>0){
+    const speed=200;
+    const dmg=Math.floor(15+p.int*3+game.floor*3);
+    game.projectiles.push({
+      x:p.x,y:p.y,
+      vx:dx/dist*speed,vy:dy/dist*speed,
+      dmg:dmg,life:3,
+      color:'#ff4400',
+      target:'enemy'
+    });
+    game.audio.play('magic');
+    game.particles.emit(p.x*32+16,p.y*32+16,10,{colors:['#ff4400','#ff8800','#ffcc00'],speed:60,life:.5,size:3,type:'circle'});
+    game.floatingTexts.push({x:p.x,y:p.y-1,text:'-'+manaCost,color:'#4488ff',life:.8,vy:-25});
+  }
+});
+
+// ==================== GAME LOOP ====================
+function loop(timestamp){
+  const dt=Math.min((timestamp-game.lastTime)/1000,.05);
+  game.lastTime=timestamp;
+  game.time+=dt;
+  game.update(dt);
+  game.render();
+  requestAnimationFrame(loop);
+}
+game.lastTime=performance.now();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
