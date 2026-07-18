@@ -138,8 +138,63 @@
 
 <script type="module">
 import * as THREE from './vendor/three.module.js';
+import { GLTFLoader } from './vendor/jsm/loaders/GLTFLoader.js';
 
-const GAME_VERSION = '3.3.3';
+const GAME_VERSION = '3.4.0';
+
+// ====================== 3D MODEL LOADING (real rigged assets w/ animations) ======================
+const MODEL_URLS = {
+  soldier:  './vendor/models/soldier.glb',
+  xbot:     './vendor/models/xbot.glb',
+  robot:    './vendor/models/robot.glb',
+  michelle: './vendor/models/michelle.glb',
+  flamingo: './vendor/models/flamingo.glb',
+  parrot:   './vendor/models/parrot.glb',
+  stork:    './vendor/models/stork.glb',
+  horse:    './vendor/models/horse.glb',
+};
+const _modelCache = {};
+function loadGLTF(url){
+  if(_modelCache[url]) return _modelCache[url];
+  const l = new GLTFLoader();
+  const p = new Promise((res,rej)=> l.load(url, g=>res(g), undefined, rej));
+  _modelCache[url] = p;
+  return p;
+}
+function pickClip(clips, keys){
+  for(const k of keys){ const c=clips.find(c=>c.name.toLowerCase().includes(k)); if(c)return c; }
+  return clips[0]||null;
+}
+// Build an animated actor from a gltf url. Returns {root, mixer, actions:{idle,walk,run,attack,death}}
+async function buildActor(url, opts={}){
+  try {
+    const gltf = await loadGLTF(url);
+    const src = gltf.scene || (gltf.scenes && gltf.scenes[0]);
+    const root = src.clone(true);
+    root.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true;
+      if(opts.tint){ o.material = o.material.clone(); o.material.color && o.material.color.set(opts.tint);
+        if(o.material.emissive) o.material.emissive.set(opts.tint).multiplyScalar(0.25); } } });
+    const mixer = new THREE.AnimationMixer(root);
+    const clips = gltf.animations || [];
+    const actions = {};
+    const idle = pickClip(clips,['idle','stand','tpose']);
+    const walk = pickClip(clips,['walk','run','walking']);
+    const run  = pickClip(clips,['run','sprint']);
+    const attack = pickClip(clips,['attack','punch','slash','swing']);
+    const death = pickClip(clips,['death','die','dead']);
+    for(const [name,c] of [['idle',idle],['walk',walk],['run',run],['attack',attack],['death',death]]){
+      if(c){ const a=mixer.clipAction(c); a.play(); a.setEffectiveWeight(name==='idle'?1:0); actions[name]=a; }
+    }
+    if(opts.scale) root.scale.setScalar(opts.scale);
+    return { root, mixer, actions };
+  } catch(err){
+    console.warn('buildActor failed for', url, err);
+    // fallback: simple humanoid so the game still works
+    const fb = (opts.tint!==undefined) ? buildHumanoid({cloth:opts.tint}) : buildCreature('skeleton');
+    const mixer = new THREE.AnimationMixer(fb);
+    return { root: fb, mixer, actions:{} };
+  }
+}
 
 // ====================== CONFIG ======================
 const TILE = 2.0;                 // world units per tile
@@ -383,6 +438,19 @@ function buildCreature(type){
   return g;
 }
 
+// Map enemy types to real rigged GLTF models with animations
+function enemyModelFor(type){
+  switch(type){
+    case 'skeleton': return { url:MODEL_URLS.xbot,     tint:0xe8e4d8, scale:0.95 };
+    case 'goblin':   return { url:MODEL_URLS.michelle, tint:0x6aa84f, scale:0.62 };
+    case 'zombie':   return { url:MODEL_URLS.soldier,  tint:0x6b8e5a, scale:1.0 };
+    case 'demon':    return { url:MODEL_URLS.robot,    tint:0xb03030, scale:1.15 };
+    case 'wraith':   return { url:MODEL_URLS.flamingo, tint:0x9b6bd6, scale:1.3, float:true };
+    case 'brute':    return { url:MODEL_URLS.soldier,  tint:0x8a6a4a, scale:1.7 };
+    default:         return { url:MODEL_URLS.xbot,     tint:0xe8e4d8, scale:0.95 };
+  }
+}
+
 class Enemy {
   constructor(type,x,z,floor){
     this.def=ENEMY_DEFS[type]||ENEMY_DEFS.skeleton; this.type=type;
@@ -394,15 +462,26 @@ class Enemy {
     this.speed=this.def.speed*(0.9+Math.random()*0.3);
     this.cd=Math.random()*1.5; this.atkRange=this.def.kind==='ranged'?9:1.8;
     this.xp=this.def.xp;
-    this.mesh=buildCreature(type); this.mesh.position.set(x,0,z);
     this.animT=Math.random()*6; this.hitFlash=0; this.strafe=Math.random()<.5?1:-1;
+    this.mesh=null;
+  }
+  async init(){
+    const m=enemyModelFor(this.type);
+    const actor=await buildActor(m.url,{ tint:m.tint, scale:m.scale });
+    this.mesh=actor.root; this.mixer=actor.mixer; this.actions=actor.actions;
+    this.mesh.position.set(this.x, m.yOffset||0, this.z);
+    this.float = m.float||false;
+    if(this.float) this.mesh.position.y += 1.6;
     // hp bar (billboard sprite)
     const c=document.createElement('canvas'); c.width=64; c.height=10; this._hpc=c;
     const tex=new THREE.CanvasTexture(c); this._hptex=tex;
     const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
-    spr.scale.set(1.4,0.22,1); spr.position.y=1.5*this.def.size; this.mesh.add(spr); this.hpBar=spr;
+    spr.scale.set(1.6,0.25,1); spr.position.y=(m.scale>1.4?2.6:1.9); this.mesh.add(spr); this.hpBar=spr;
+    this.updateBar();
+    return this;
   }
   updateBar(){
+    if(!this._hpc)return;
     const c=this._hpc,ctx=c.getContext('2d'); ctx.clearRect(0,0,64,10);
     ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(0,0,64,10);
     const w=Math.max(0,Math.round(this.hp/this.maxHp*60)); ctx.fillStyle=this.hp/this.maxHp>0.4?'#5ad65a':'#d65a5a'; ctx.fillRect(2,2,w,6);
@@ -439,7 +518,7 @@ class Game {
     ];
     this.cls=null;
   }
-  start(classId){
+  async start(classId){
     this.cls=this.classes.find(c=>c.id===classId)||this.classes[0];
     this.player={ x:0,z:0, vx:0,vz:0, dir:0, walking:false, animT:0,
       hp:this.cls.hp, maxHp:this.cls.hp, mp:this.cls.mp, maxMp:this.cls.mp,
@@ -447,24 +526,26 @@ class Game {
       str:this.cls.str, dex:this.cls.dex, int:this.cls.int,
       baseDmg:this.cls.dmg, def:this.cls.def, attackCd:0, invuln:0,
       potions:[1,1,0,0,0], potionCd:0, swing:0, castCd:0 };
-    this.mesh=buildHumanoid({cloth:this.cls.color});
-    this.mesh.scale.setScalar(1.5);
+    if(this.mesh){ scene.remove(this.mesh); }
+    const hero=await buildActor(MODEL_URLS.soldier, { tint:this.cls.color, scale:1.15 });
+    this.mesh=hero.root; this.heroMixer=hero.mixer; this.heroActions=hero.actions;
+    this.mesh.scale.setScalar(1.6);
     // warm point light that follows the hero so the player is always clearly lit
     const plight=new THREE.PointLight(0xffe6b0, 1.4, 26, 1.6); plight.position.set(0,3.2,0); this.mesh.add(plight);
     scene.add(this.mesh);
-    this.generateFloor();
+    await this.generateFloor();
     this.state='playing';
     document.getElementById('landing').classList.add('hidden');
     document.getElementById('gameover').classList.add('hidden');
     this.toast(this.cls.name+' awaken in the depths...');
   }
-  generateFloor(){
+  async generateFloor(){
     this.dungeon=new Dungeon(48,48); this.dungeon.generate(this.floor);
     this.buildWorldMesh();
     // place player at room 0 center
     const r=this.dungeon.rooms[0];
     this.player.x=(r.cx)*TILE; this.player.z=(r.cy)*TILE;
-    this.spawnEnemies();
+    await this.spawnEnemies();
   }
   buildWorldMesh(){
     if(this.meshes.root){ scene.remove(this.meshes.root); this.meshes.root.traverse(o=>{if(o.isMesh){o.geometry.dispose();}}); }
@@ -527,12 +608,13 @@ class Game {
       root.add(grp); this.meshes.interact[ib.x+','+ib.y]=grp;
     }
   }
-  spawnEnemies(){
+  async spawnEnemies(){
     this.enemies.length=0;
     const f=this.floor;
     const pool=['skeleton','goblin','zombie','demon','wraith','brute'];
     const count=6+Math.floor(f*1.6)+Math.floor(Math.random()*3);
     let placed=0, guard=0;
+    const pending=[]; const enemyList=[];
     while(placed<count && guard<count*30){
       guard++;
       const r=this.dungeon.rooms[1+Math.floor(Math.random()*(this.dungeon.rooms.length-1))];
@@ -546,14 +628,18 @@ class Game {
       if(f<2) type=roll<.5?'goblin':(roll<.8?'skeleton':'zombie');
       else if(f<5) type=roll<.3?'goblin':roll<.55?'skeleton':roll<.75?'zombie':roll<.9?'wraith':'demon';
       else type=roll<.2?'goblin':roll<.4?'skeleton':roll<.6?'zombie':roll<.78?'wraith':roll<.92?'demon':'brute';
-      const e=new Enemy(type,wx,wz,f); e.updateBar(); scene.add(e.mesh); this.enemies.push(e); placed++;
+      const e=new Enemy(type,wx,wz,f); pending.push(e.init()); enemyList.push(e); placed++;
     }
+    await Promise.all(pending);
+    for(const e of enemyList){ e.mesh.position.set(e.x, e.float?1.6:0, e.z); scene.add(e.mesh); this.enemies.push(e); }
     // boss every 5 floors
     if(f%5===0){
       const r=this.dungeon.rooms[this.dungeon.rooms.length-1];
       const b=new Enemy(Math.random()<.5?'demon':'brute', r.cx*TILE, r.cy*TILE, f+4);
-      b.isBoss=true; b.maxHp*=3.5; b.hp=b.maxHp; b.dmg=Math.round(b.dmg*1.6); b.def.scale=2.0;
-      b.mesh.scale.setScalar(2.0); b.xp*=6; b.updateBar(); scene.add(b.mesh); this.enemies.push(b);
+      await b.init();
+      b.isBoss=true; b.maxHp*=3.5; b.hp=b.maxHp; b.dmg=Math.round(b.dmg*1.6); b.xp*=6;
+      b.mesh.scale.multiplyScalar(1.8); b.mesh.position.set(b.x, b.float?1.6:0, b.z);
+      b.updateBar(); scene.add(b.mesh); this.enemies.push(b);
       this.toast('A '+b.def.name+' BOSS blocks your path!');
     }
   }
@@ -631,11 +717,13 @@ class Game {
     this.updateHUD();
   }
   animateHumanoid(dt){
-    const p=this.player, u=this.mesh.userData; if(!u)return;
-    const sw=p.walking?Math.sin(p.animT)*0.5:0;
-    u.legL.rotation.x=sw; u.legR.rotation.x=-sw;
-    u.armL.rotation.x=-sw*0.6; u.armR.rotation.x=sw*0.6;
-    if(p.swing>0){ const s=Math.sin((1-p.swing/0.3)*Math.PI); u.armR.rotation.x=-1.6*s - 0.2; u.sword.rotation.z=Math.sin(s*Math.PI)*0.3; }
+    const p=this.player;
+    if(this.heroMixer) this.heroMixer.update(dt);
+    const A=this.heroActions;
+    if(!A)return;
+    if(p.swing>0 && A.attack){ this._playOnce(A,'attack'); }
+    else if(p.walking && A.walk){ this._cross(A,'walk','idle'); }
+    else if(A.idle){ this._cross(A,'idle','walk'); }
   }
   melee(){
     const p=this.player; p.swing=0.3;
@@ -809,44 +897,44 @@ class Game {
   updateEnemies(dt){
     const p=this.player;
     for(const e of this.enemies){
-      if(e.dead)continue;
-      // hit flash
-      if(e.hitFlash>0){ e.hitFlash-=dt; e.mesh.traverse(o=>{if(o.isMesh)o.material.emissiveIntensity=(o.material.emissive.getHex()? (e.hitFlash>0?1.2:0):0);}); }
+      if(e.dead||!e.mixer)continue;
+      if(e.hitFlash>0){ e.hitFlash-=dt; }
       const dx=p.x-e.x, dz=p.z-e.z, d=Math.hypot(dx,dz)||1;
       const nx=dx/d, nz=dz/d;
-      // movement: chase, keep atkRange distance for ranged
       let mvx=0,mvz=0;
       if(e.def.kind==='ranged'){ if(d>e.atkRange-1){ mvx=nx; mvz=nz; } else if(d<4){ mvx=-nx; mvz=-nz; } else { mvx=-nz*e.strafe; mvz=nx*e.strafe; } }
       else { if(d>e.atkRange){ mvx=nx; mvz=nz; } }
-      const sp=e.speed*(e.def.float?1.1:1);
+      const sp=e.speed*(e.float?1.1:1);
       const tx=e.x+mvx*sp*dt, tz=e.z+mvz*sp*dt;
       if(this.dungeon.walkable(Math.round(tx/TILE),Math.round(tz/TILE))){ e.x=tx; e.z=tz; }
-      e.mesh.position.set(e.x, e.def.float?0.4+Math.sin(this.time*3+e.animT)*0.1:0, e.z);
-      // face player
+      const moving=(mvx||mvz);
+      const yBase=e.float?1.6:0;
+      e.mesh.position.set(e.x, yBase + (e.float?Math.sin(this.time*3+e.animT)*0.12:0), e.z);
       e.mesh.rotation.y=Math.atan2(nx,nz);
-      // walk anim
-      e.animT+=dt*8; const sw=Math.sin(e.animT)*0.5*(mvx||mvz?1:0.15);
-      if(e.mesh.userData.legL){ e.mesh.userData.legL.rotation.x=sw; e.mesh.userData.legR.rotation.x=-sw; }
-      if(e.def.type==='demon'&&e.mesh.userData.wings){ const f=Math.sin(this.time*8)*0.4; e.mesh.userData.wings[0].rotation.z=0.5+f; e.mesh.userData.wings[1].rotation.z=-0.5-f; }
+      // animation: crossfade walk<->idle, trigger attack
+      e.mixer.update(dt);
+      const A=e.actions;
+      if(A.attack && e._atkT>0){ /* attack playing */ }
+      else if(A.walk && moving){ this._cross(A,'walk','idle'); }
+      else if(A.idle){ this._cross(A,'idle','walk'); }
       // attack
-      e.cd-=dt;
+      e.cd-=dt; e._atkT=(e._atkT||0)-dt;
       if(d<e.atkRange && e.cd<=0){
         e.cd=e.def.kind==='ranged'?2.2:1.1;
+        if(A.attack){ this._playOnce(A,'attack'); e._atkT=0.6; }
         if(e.def.kind==='ranged'){
           const proj={x:e.x,y:0.8,z:e.z,vx:nx*9,vz:nz*9,life:3,dmg:e.dmg*0.7,enemy:true,
             mesh:cyl(0.16,0.16,0.5,mat(0x8a2be2,{emissive:0x6a00aa,emissiveIntensity:1.2}))};
           proj.mesh.rotation.x=Math.PI/2; scene.add(proj.mesh); this.projectiles.push(proj);
         } else {
-          // lunge
-          if(e.mesh.userData.armR) e.mesh.userData.armR.rotation.x=-1.2;
           this.damagePlayer(e.dmg);
         }
       }
-      if(e.mesh.userData.armR) e.mesh.userData.armR.rotation.x*=0.9;
     }
-    // remove dead
     this.enemies=this.enemies.filter(e=>!e.dead);
   }
+  _cross(A,on,off){ if(A[on]){ A[on].enabled=true; A[on].setEffectiveWeight(1);} if(A[off]){ A[off].setEffectiveWeight(0);} }
+  _playOnce(A,name){ const a=A[name]; if(!a)return; a.reset(); a.setLoop(THREE.LoopOnce); a.clampWhenFinished=true; a.enabled=true; a.setEffectiveWeight(1); a.play(); }
   updateProjectiles(dt){
     for(const pr of this.projectiles){
       pr.x+=pr.vx*dt; pr.z+=pr.vz*dt; pr.life-=dt;

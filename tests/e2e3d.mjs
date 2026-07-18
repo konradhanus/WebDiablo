@@ -32,9 +32,11 @@ try{
   check('zero page errors on boot', perr.length===0, perr.join(' | '));
   check('zero console errors on boot', cerr.length===0, cerr.join(' | '));
   check('THREE loaded + game object', await page.evaluate(()=>typeof window.game==='object'&&window.game!==null));
-  check('player mesh is a humanoid Group', await page.evaluate(()=>{
-    const g=window.game; g.start('warrior');
-    return !!g.mesh && g.mesh.userData && g.mesh.userData.legL && g.mesh.userData.sword;
+  check('game starts + hero model loads (async GLTF)', await page.evaluate(async ()=>{
+    const g=window.game; await g.start('warrior');
+    // wait for enemies to finish loading
+    for(let i=0;i<60 && g.enemies.length===0;i++) await new Promise(r=>setTimeout(r,100));
+    return !!g.mesh && g.mesh.type==='Group' && g.enemies.length>0 && g.heroActions && Object.keys(g.heroActions).length>0;
   }));
   check('world mesh built (floor+walls)', await page.evaluate(()=>{
     const g=window.game; return g.meshes && g.meshes.root && g.meshes.root.children.length>=2;
@@ -62,7 +64,7 @@ try{
   check('fireball spawns projectile', await page.evaluate(()=>window.game.projectiles.length>=1));
   // ===== Faza 1: enemies + combat =====
   check('enemies spawn on floor', await page.evaluate(()=>{ const g=window.game; return g.enemies.length>0; }));
-  check('enemy has humanoid mesh + hp bar', await page.evaluate(()=>{ const e=window.game.enemies[0]; return e&&e.mesh&&e.mesh.userData&&e.mesh.userData.legL&&e.hpBar; }));
+  check('enemy has rigged mesh + hp bar', await page.evaluate(()=>{ const e=window.game.enemies[0]; return e&&e.mesh&&e.mesh.type==='Group'&&e.hpBar&&e.actions&&Object.keys(e.actions).length>0; }));
   // kill an enemy via hitEnemy -> loot + xp
   const beforeLoot=await page.evaluate(()=>window.game.loot.length);
   await page.evaluate(()=>{ const g=window.game; const e=g.enemies.find(x=>!x.isBoss)||g.enemies[0]; const hp0=e.hp; for(let i=0;i<30;i++)g.hitEnemy(e, 999); });
