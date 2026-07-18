@@ -99,6 +99,12 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 #waveBanner{position:absolute;top:32%;left:50%;transform:translate(-50%,-50%) scale(.6);z-index:60;font-family:'Cinzel',Georgia,serif;font-size:48px;font-weight:900;color:#ff4422;text-shadow:0 0 20px #ff0000,3px 3px 0 #330000;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;text-align:center}
 #waveBanner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 #waveBanner.clear{color:#ffdd44;text-shadow:0 0 20px #ffaa00,3px 3px 0 #332200}
+/* ===== Feature 017: Boss HP bar ===== */
+#bossBar{position:absolute;top:96px;left:50%;transform:translateX(-50%);z-index:30;width:min(560px,70vw);text-align:center;font-family:Georgia,serif;color:#ff8866;display:none}
+#bossBar.show{display:block}
+#bossName{font-size:18px;letter-spacing:2px;text-shadow:0 0 12px #aa0000,2px 2px 0 #220000}
+.boss-hp-track{margin-top:4px;height:18px;background:#1a0808;border:2px solid #5a1a1a;border-radius:10px;overflow:hidden;box-shadow:0 0 14px rgba(170,0,0,.4)}
+.boss-hp-fill{height:100%;width:100%;background:linear-gradient(90deg,#ff2200,#ff6600 60%,#ffaa00);transition:width .12s linear;box-shadow:inset 0 0 8px rgba(255,200,0,.5)}
 /* ===== Feature 016: HUD rework (dark-fantasy Diablo) ===== */
 #topBar{position:absolute;top:10px;left:10px;z-index:10;display:flex;flex-direction:column;gap:6px}
 #orbCluster{display:flex;align-items:flex-end;gap:10px}
@@ -268,6 +274,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 <div id="carnageBar"><span id="carnageText">Kills: 0</span> <span id="bloodlustText"></span></div>
   <div id="waveBar"><span id="waveText">WAVE 0 · next 25s</span></div>
   <div id="waveBanner"></div>
+  <div id="bossBar" style="display:none"><span id="bossName"></span><div class="boss-hp-track"><div class="boss-hp-fill" id="bossHpFill"></div></div></div>
   <div id="squadBtns">
     <button id="recruitBtn" title="Recruit mercenary (Q)">+ Squad (Q)</button>
     <button id="holdBtn" title="Toggle hold position (R)">Hold (R)</button>
@@ -277,7 +284,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.8.0';
+const GAME_VERSION = '1.9.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -673,6 +680,16 @@ const ENEMY_TYPES=[
   {name:'Bone Dragon',hp:200,dmg:30,def:12,speed:30,color:'#aa4400',size:24,xp:150,icon:'🐉',drops:['rare','legendary'],boss:true},
   {name:'Lich King',hp:350,dmg:40,def:18,speed:25,color:'#8844cc',size:28,xp:300,icon:'👑',drops:['legendary','legendary','mythic'],boss:true},
 ];
+const BOSS_NAMES=['The Bone Colossus','The Dread Lich','The Abyssal Wyrm','The Shadow Tyrant','The Infernal Lord','The Void Herald'];
+function bossTemplateFor(floor){
+  const idx=Math.floor((floor/5)-1)%BOSS_NAMES.length;
+  const tier=Math.floor(floor/5); // 1,2,3...
+  return {
+    name:BOSS_NAMES[idx], icon: tier%2? '👑':'🐉', color: tier%2?'#8844cc':'#aa4400',
+    size:26+Math.min(10,tier*2), hp:300+tier*250, dmg:25+tier*10, def:10+tier*4,
+    speed:28, xp:200+tier*150, boss:true, drops:['rare','legendary','mythic']
+  };
+}
 
 // ==================== GAME ====================
 const canvas=document.getElementById('gameCanvas');
@@ -701,6 +718,8 @@ class Game {
     this.carnage={kills:0,streak:0,streakTimer:0}; // Feature 014: bloodlust meter
     this.wave={num:0,timer:25,active:false,toSpawn:0,spawnCd:0}; // Feature 015: horde waves
     this.fireballCd=0; // Feature 016: skill bar cooldown
+    this.bossArena=false; // Feature 017: boss encounter active
+    this.boss=null; // Feature 017: current boss ref
     this.time=0;
   }
   start(){
@@ -802,24 +821,91 @@ class Game {
       });
     }
     if(this.floor%5===0){
-      const bossType=ENEMY_TYPES[6+Math.floor(this.floor/5)];
-      if(bossType){
-        const pos=this.dungeon.randomFloor();
-        const scale=1+(this.floor-1)*.1;
-        this.enemies.push({
-          ...bossType,
-          x:pos.x,y:pos.y,
-          hp:Math.floor(bossType.hp*scale),
-          maxHp:Math.floor(bossType.hp*scale),
-          dmg:Math.floor(bossType.dmg*scale),
-          def:Math.floor(bossType.def*scale),
-          state:'idle',stateTimer:0,
-          aggroRange:10,attackRange:2,attackCooldown:0,
-          hitFlash:0,deathTimer:0,dead:false,
-          path:null,pathTimer:0
-        });
+      this.bossArena=true;
+      const pos=this.dungeon.randomFloor();
+      this.player.x=pos.x;this.player.y=pos.y;
+      this.spawnBoss(this.floor);
+    }
+  }
+  spawnBoss(floor){
+    const tmpl=bossTemplateFor(floor);
+    const pos=this.dungeon.randomFloor();
+    const scale=1+(floor-1)*.1;
+    const boss={
+      ...tmpl,
+      x:pos.x,y:pos.y,
+      hp:Math.floor(tmpl.hp*scale),maxHp:Math.floor(tmpl.hp*scale),
+      dmg:Math.floor(tmpl.dmg*scale),def:Math.floor(tmpl.def*scale),
+      state:'idle',stateTimer:0,aggroRange:14,attackRange:2.2,attackCooldown:0,
+      hitFlash:0,deathTimer:0,dead:false,path:null,pathTimer:0,
+      boss:true,phase:1,atkTimer:2.5,telegraph:0,pendingAbility:null,
+      enraged:false,summonCd:0,charging:false,chargeVX:0,chargeVY:0
+    };
+    this.enemies.push(boss);
+    this.boss=boss;
+    this.showBanner('THE '+boss.name.toUpperCase()+' AWAKENS','boss');
+    this.audio.play('boss');
+    this.logMsg(`A terrible presence fills the chamber — ${boss.name}!`,'#ff4422');
+  }
+  updateBoss(e,dt){
+    const p=this.player;
+    // Phase transitions
+    if(e.phase<3&&e.hp<=e.maxHp*0.33){e.phase=3;e.enraged=true;e.atkTimer=1;this.showBanner(e.name.toUpperCase()+' ENRAGED!','boss');this.audio.play('boss');}
+    else if(e.phase<2&&e.hp<=e.maxHp*0.66){e.phase=2;e.atkTimer=1.5;}
+    const spd=e.enraged?e.speed*1.6:e.speed;
+    // Telegraph → execute
+    if(e.telegraph>0){
+      e.telegraph-=dt;
+      if(e.telegraph<=0)this.bossExecute(e);
+      return; // stand still while telegraphing
+    }
+    e.atkTimer-=dt;
+    if(e.atkTimer<=0){
+      // Pick ability by phase
+      const pool=e.phase>=3?['shockwave','summon','charge','firerain']:
+        e.phase>=2?['shockwave','summon','charge']:['shockwave'];
+      e.pendingAbility=pool[Math.floor(Math.random()*pool.length)];
+      e.telegraph=0.8; // tell player to dodge
+      e.atkTimer=e.phase>=3?2.2:3.2;
+      if(e.pendingAbility==='charge'){
+        const dx=p.x-e.x,dy=p.y-e.y;const m=Math.hypot(dx,dy)||1;
+        e.chargeVX=dx/m;e.chargeVY=dy/m;
+      }
+      return;
+    }
+    // Movement (toward player; charge dash)
+    let dx=p.x-e.x,dy=p.y-e.y;const m=Math.hypot(dx,dy)||1;
+    const mv=spd*dt*(1/32);
+    if(e.charging){
+      e.x+=e.chargeVX*mv*4;e.y+=e.chargeVY*mv*4;
+      if(Math.hypot(p.x-e.x,p.y-e.y)<1.2){this.damagePlayer(e.dmg*1.5);e.charging=false;}
+      if(Math.hypot(e.x-e._cx,e.y-e._cy)>10)e.charging=false; // stop after range
+    }else{
+      e.x+=dx/m*mv;e.y+=dy/m*mv;
+    }
+  }
+  bossExecute(e){
+    const p=this.player;
+    if(e.pendingAbility==='shockwave'){
+      this.particles.emit(e.x*32+16,e.y*32+16,30,{colors:['#ffaa00','#ff4400','#ffffff'],speed:160,life:.7,size:4,type:'circle'});
+      if(Math.hypot(p.x-e.x,p.y-e.y)<4)this.damagePlayer(Math.floor(e.dmg*0.8));
+      this.shake(6);
+    }else if(e.pendingAbility==='summon'){
+      const n=2+Math.floor(Math.random()*2);
+      for(let i=0;i<n&&this.enemies.length<60;i++){
+        const ang=Math.random()*Math.PI*2;
+        this.spawnEnemy(ENEMY_TYPES[Math.floor(Math.random()*4)],Math.round(e.x+Math.cos(ang)*2),Math.round(e.y+Math.sin(ang)*2));
+      }
+      this.logMsg(e.name+' summons minions!','#cc6644');
+    }else if(e.pendingAbility==='charge'){
+      e.charging=true;e._cx=e.x;e._cy=e.y;
+    }else if(e.pendingAbility==='firerain'){
+      for(let i=0;i<5;i++){
+        const tx=p.x+(Math.random()*8-4),ty=p.y+(Math.random()*8-4);
+        this.projectiles.push({x:e.x,y:e.y,vx:0,vy:0,life:0.9,dmg:Math.floor(e.dmg*0.6),color:'#ff6600',type:'firebomb',size:6,targetX:tx,targetY:ty});
       }
     }
+    e.pendingAbility=null;
   }
   respawn(){
     document.getElementById('deathScreen').style.display='none';
@@ -1164,6 +1250,23 @@ class Game {
       this.carnage.streak++;
       this.carnage.streakTimer=4;
       this.updateUI(); // refresh carnage/bloodlust HUD
+      // Feature 017: BOSS death — guaranteed rare+ loot, big XP, gates open
+      if(e.boss){
+        const bonus=100*this.floor;
+        p.xp+=bonus;
+        this.bossArena=false;this.boss=null;
+        this.showBanner('VICTORY — '+e.name+' SLAIN','victory');
+        this.audio.play('boss');
+        this.logMsg(`VICTORY! ${e.name} defeated (+${bonus} XP)`,'#ffdd44');
+        // guaranteed drop: pick a high rarity
+        const pool=['rare','legendary','mythic'];
+        const rname=pool[Math.floor(Math.random()*pool.length)];
+        const rarity=RARITIES.find(r=>r.name===rname)||RARITIES[2];
+        const item=generateItem(this.floor);item.rarity=rarity.name;item.color=rarity.color;
+        this.loot.push({...item,x:e.x,y:e.y});
+        // also a potion
+        this.loot.push({id:Math.random().toString(36).substr(2,6),name:'Health Potion',type:'potion',rarity:'common',icon:'🧪',slot:'potion',x:e.x,y:e.y});
+      }
       // Drop loot
       const drops=e.drops||[];
       if(drops.length&&Math.random()<.4+e.xp/200){
@@ -1200,6 +1303,7 @@ class Game {
   }
   updateEnemies(dt){
     for(const e of this.enemies){
+      if(e.boss){this.updateBoss(e,dt);continue;}
       if(e.dead){e.deathTimer-=dt;continue}
       if(e.hitFlash>0)e.hitFlash-=dt;
       if(e.attackCooldown>0)e.attackCooldown-=dt;
@@ -1313,6 +1417,22 @@ class Game {
             document.getElementById('deathScreen').style.display='flex';this.state='dead';
           }
         }
+      }
+      // Firebomb (boss ability): home toward target tile, explode on arrival / expiry
+      if(pr.type==='firebomb'){
+        if(pr.targetX!==undefined){
+          const tx=pr.targetX-pr.x,ty=pr.targetY-pr.y;const d=Math.hypot(tx,ty);
+          if(d<0.6){
+            // explode
+            if(Math.hypot(this.player.x-pr.x,this.player.y-pr.y)<1.6)this.damagePlayer(pr.dmg);
+            this.particles.emit(pr.x*32+16,pr.y*32+16,16,{colors:['#ff6600','#ffcc00','#ff2200'],speed:120,life:.5,size:3,type:'circle'});
+            this.shake(4);
+            this.projectiles.splice(i,1);continue;
+          }
+          const sp=6*dt;pr.x+=tx/d*sp;pr.y+=ty/d*sp;
+        }
+        if(pr.life<=0){this.projectiles.splice(i,1);continue;}
+        continue;
       }
       // Wall collision
       if(!this.dungeon.isWalkable(Math.round(pr.x),Math.round(pr.y))){
@@ -1559,6 +1679,29 @@ class Game {
     if(carn)carn.textContent='Kills: '+this.carnage.kills;
     const bl=document.getElementById('bloodlustText');
     if(bl)bl.textContent=this.carnage.streak>1?('BLOODLUST x'+this.carnage.streak):'';
+    // Feature 017: boss HP bar
+    const bb=document.getElementById('bossBar');
+    if(bb){
+      if(this.bossArena&&this.boss&&!this.boss.dead){
+        bb.classList.add('show');
+        document.getElementById('bossName').textContent=this.boss.name;
+        document.getElementById('bossHpFill').style.width=Math.max(0,this.boss.hp/this.boss.maxHp*100)+'%';
+      }else{
+        bb.classList.remove('show');
+      }
+    }
+  }
+  updateBossBar(){ // Feature 017: per-frame boss HP (mirrors updateUI logic)
+    const bb=document.getElementById('bossBar');
+    if(!bb)return;
+    if(this.bossArena&&this.boss&&!this.boss.dead){
+      bb.classList.add('show');
+      const nm=document.getElementById('bossName');if(nm)nm.textContent=this.boss.name;
+      const fill=document.getElementById('bossHpFill');
+      if(fill)fill.style.width=Math.max(0,this.boss.hp/this.boss.maxHp*100)+'%';
+    }else{
+      bb.classList.remove('show');
+    }
   }
   toggleEquipPanel(){
     const panel=document.getElementById('equipPanel');
@@ -1684,6 +1827,7 @@ class Game {
   render(){
     if(!this.dungeon||this.state!=='playing')return;
     this.updateSkillBar(); // Feature 016: per-frame cooldown sweep
+    this.updateBossBar(); // Feature 017: per-frame boss HP
     ctx.fillStyle='#0a0505';ctx.fillRect(0,0,canvas.width,canvas.height);
     const camX=this.camera.x+Math.sin(this.time*3)*this.shakeIntensity;
     const camY=this.camera.y+Math.cos(this.time*3)*this.shakeIntensity;

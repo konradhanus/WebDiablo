@@ -317,6 +317,36 @@ try {
   check('fireball slot shows cooling', hud.fbCooling === true, 'cooling=' + hud.fbCooling);
   check('cooldown overlay has height', /%/.test(hud.cdHeight) && hud.cdHeight !== '0%', 'cdHeight=' + hud.cdHeight);
   check('no errors after HUD', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 017: Boss Arena & Mechanics ---
+  const boss = await page.evaluate(() => {
+    const g = window.game;
+    // Force floor 5 boss arena
+    g.floor = 5;
+    g.generateFloor();
+    g.updateBossBar && g.updateBossBar();
+    const hasBoss = !!(g.boss && g.boss.boss);
+    const bossBar = document.getElementById('bossBar');
+    const barShown = bossBar && bossBar.classList.contains('show');
+    // Damage boss to <33% → phase 3 enrage
+    g.boss.hp = g.boss.maxHp * 0.2;
+    g.update(0.1);
+    const phase3 = g.boss.phase === 3 && g.boss.enraged === true;
+    // Kill boss → gates open, loot dropped, VICTORY
+    const lootBefore = g.loot.length;
+    g.hitEnemy(g.boss, 999999);
+    const gatesOpen = g.bossArena === false && g.boss === null;
+    const lootDropped = g.loot.length > lootBefore;
+    const victory = /VICTORY/.test(document.getElementById('bossName') ? document.body.innerHTML : '');
+    return { hasBoss, barShown, phase3, gatesOpen, lootDropped, victory,
+             bossName: g.boss ? g.boss.name : 'killed' };
+  });
+  check('boss spawned on floor 5', boss.hasBoss, 'boss=' + boss.bossName);
+  check('boss HP bar visible', boss.barShown === true, 'barShown=' + boss.barShown);
+  check('phase 3 enrage at <33% HP', boss.phase3 === true, 'phase3=' + boss.phase3);
+  check('boss death opens gates', boss.gatesOpen === true, 'gatesOpen=' + boss.gatesOpen);
+  check('boss death drops loot', boss.lootDropped === true, 'loot=' + boss.lootDropped);
+  check('no errors after boss', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message + '\n' + (e.stack||''));
 } finally {
