@@ -6,6 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1a2233">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="64x64" href="./icons/favicon-64.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="mask-icon" href="./icons/mask-icon.svg" color="#1a2233">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -18,7 +23,7 @@
   #game{position:fixed;inset:0;display:block}
   /* HUD */
   #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
-  #topbar{position:absolute;top:10px;left:50%;transform:translateX(-50%);
+  #topbar{position:absolute;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
     display:flex;gap:14px;align-items:center;background:rgba(20,26,40,.55);
     padding:6px 16px;border-radius:20px;backdrop-filter:blur(4px);
     border:1px solid rgba(180,200,255,.15);font-size:13px}
@@ -33,13 +38,13 @@
     width:60%;height:6px;background:rgba(0,0,0,.4);border-radius:4px;overflow:hidden;
     border:1px solid rgba(255,255,255,.12)}
   #xp>i{display:block;height:100%;background:linear-gradient(90deg,#8e44ad,#9b59b6);width:0%}
-  #floorTag{position:absolute;top:10px;left:14px;font-size:13px;
+  #floorTag{position:absolute;top:calc(10px + env(safe-area-inset-top));left:calc(14px + env(safe-area-inset-left));font-size:13px;
     background:rgba(20,26,40,.55);padding:4px 12px;border-radius:12px;
     border:1px solid rgba(180,200,255,.15)}
   #msg{position:absolute;top:64px;left:50%;transform:translateX(-50%);
     text-align:center;font-size:15px;color:#ffd96b;text-shadow:0 2px 4px #000;
     max-width:80%}
-  #minimap{position:absolute;top:10px;right:10px;width:150px;height:150px;
+  #minimap{position:absolute;top:calc(10px + env(safe-area-inset-top));right:calc(10px + env(safe-area-inset-right));width:150px;height:150px;
     border-radius:8px;border:1px solid rgba(180,200,255,.25);
     background:rgba(8,12,20,.6);backdrop-filter:blur(3px)}
   #squadTag{position:absolute;bottom:50px;right:14px;font-size:12px;color:#9fd;
@@ -47,9 +52,9 @@
   #versionBar{position:fixed;bottom:6px;right:10px;font-size:11px;
     color:#7a89a;z-index:11;pointer-events:none}
   /* Touch controls */
-  #touchUI{position:fixed;inset:0;z-index:20;display:none}
+  #touchUI{position:fixed;inset:0;z-index:20;display:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
   body.touch #touchUI{display:block}
-  #joy{position:absolute;left:24px;bottom:24px;width:128px;height:128px;
+  #joy{position:absolute;left:calc(24px + env(safe-area-inset-left));bottom:calc(24px + env(safe-area-inset-bottom));width:128px;height:128px;
     border-radius:50%;background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.18)}
   #joyKnob{position:absolute;left:50%;top:50%;width:54px;height:54px;
     margin:-27px 0 0 -27px;border-radius:50%;background:rgba(180,200,255,.35);
@@ -58,13 +63,26 @@
     background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.25);
     display:flex;align-items:center;justify-content:center;font-size:13px;
     color:#dfe;font-weight:bold;backdrop-filter:blur(3px)}
-  #btnAtk{right:24px;bottom:96px;background:rgba(231,76,60,.22)}
-  #btnFire{right:112px;bottom:28px;background:rgba(52,152,219,.22)}
-  #btnInteract{right:24px;bottom:28px;background:rgba(241,196,15,.2)}
-  #touchAim{position:absolute;right:24px;bottom:190px;width:120px;height:120px;
+  #btnAtk{right:calc(24px + env(safe-area-inset-right));bottom:calc(96px + env(safe-area-inset-bottom));background:rgba(231,76,60,.22)}
+  #btnFire{right:calc(112px + env(safe-area-inset-right));bottom:calc(28px + env(safe-area-inset-bottom));background:rgba(52,152,219,.22)}
+  #btnInteract{right:calc(24px + env(safe-area-inset-right));bottom:calc(28px + env(safe-area-inset-bottom));background:rgba(241,196,15,.2)}
+  #touchAim{position:absolute;right:calc(24px + env(safe-area-inset-right));bottom:calc(190px + env(safe-area-inset-bottom));width:120px;height:120px;
     border-radius:50%;background:rgba(255,255,255,.05);border:2px dashed rgba(255,255,255,.2)}
   #aimDot{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;
     border-radius:50%;background:#ffcc55;box-shadow:0 0 8px #ffcc55}
+  .tbtn-sm{width:52px;height:52px;font-size:11px}
+  #btnPotion{left:calc(24px + env(safe-area-inset-left));bottom:calc(168px + env(safe-area-inset-bottom));background:rgba(46,204,113,.22)}
+  #btnSquad{left:calc(86px + env(safe-area-inset-left));bottom:calc(168px + env(safe-area-inset-bottom));background:rgba(68,208,127,.22)}
+  #btnHold{left:calc(148px + env(safe-area-inset-left));bottom:calc(168px + env(safe-area-inset-bottom));background:rgba(155,89,182,.22)}
+  #btnAch{left:calc(24px + env(safe-area-inset-left));bottom:calc(228px + env(safe-area-inset-bottom));background:rgba(241,196,15,.18)}
+  #btnSettings{left:calc(86px + env(safe-area-inset-left));bottom:calc(228px + env(safe-area-inset-bottom));background:rgba(180,200,255,.18)}
+  @media (max-height:560px){
+    #joy{width:104px;height:104px}
+    .tbtn{width:62px;height:62px}
+    .tbtn-sm{width:44px;height:44px}
+    #btnPotion,#btnSquad,#btnHold{bottom:calc(140px + env(safe-area-inset-bottom))}
+    #btnAch,#btnSettings{bottom:calc(192px + env(safe-area-inset-bottom))}
+  }
   /* Overlays */
   .overlay{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;
     align-items:center;justify-content:center;background:radial-gradient(circle at 50% 40%,#1c1426,#080510);
@@ -106,6 +124,11 @@
   <div class="tbtn" id="btnAtk">ATK</div>
   <div class="tbtn" id="btnFire">FIRE</div>
   <div class="tbtn" id="btnInteract">USE</div>
+  <div class="tbtn tbtn-sm" id="btnPotion">POT</div>
+  <div class="tbtn tbtn-sm" id="btnSquad">ALLY</div>
+  <div class="tbtn tbtn-sm" id="btnHold">HOLD</div>
+  <div class="tbtn tbtn-sm" id="btnAch">ACH</div>
+  <div class="tbtn tbtn-sm" id="btnSettings">CFG</div>
 </div>
 <div id="fps">60 FPS</div>
 <div id="versionBar">WebDiablo v3.0.0</div>
@@ -783,6 +806,7 @@ class Game {
   }
   updateSquad(dt){
     const p=this.player;
+    if(this.squadHold) return; // mobile HOLD toggle: allies stay put
     for(const a of this.squad){
       // follow player at offset, attack nearby enemies
       let tx=p.x-1.4, tz=p.z+1.4;
@@ -1038,6 +1062,13 @@ function initTouch(){
   window.addEventListener('pointerup',e=>{ if(game.mouse.down)game.mouse.down=false; });
   document.getElementById('btnFire').addEventListener('pointerdown',e=>{game.keys['KeyF']=true;setTimeout(()=>game.keys['KeyF']=false,120);});
   document.getElementById('btnInteract').addEventListener('pointerdown',e=>{game.keys['KeyE']=true;setTimeout(()=>game.keys['KeyE']=false,120);});
+  // extra action buttons (mobile-first completeness)
+  const bindTap=(id,fn)=>{ const el=document.getElementById(id); if(el) el.addEventListener('pointerdown',e=>{e.preventDefault();fn();}); };
+  bindTap('btnPotion',()=>{ const p=game.player; if(!p)return; let slot=p.potions.findIndex(q=>(q||0)>0); if(slot<0)slot=0; game.usePotion(slot); });
+  bindTap('btnSquad',()=>{ if(game.state==='playing') game.recruitAlly(); });
+  bindTap('btnAch',()=>{ if(game.state!=='menu'){ const el=document.getElementById('achievements'); if(el.classList.contains('hidden'))showAch(); else el.classList.add('hidden'); } });
+  bindTap('btnHold',()=>{ game.squadHold=!game.squadHold; if(game.squadHold)game.toast('Squad: HOLD'); else game.toast('Squad: FOLLOW'); });
+  bindTap('btnSettings',()=>{ game.hudHidden=!game.hudHidden; const hud=document.getElementById('hud'); if(hud)hud.style.display=game.hudHidden?'none':''; const mini=document.getElementById('minimap'); if(mini)mini.style.display=game.hudHidden?'none':''; if(game.hudHidden)game.toast('HUD hidden (CFG)'); else game.toast('HUD shown (CFG)'); });
 }
 initTouch();
 
@@ -1076,6 +1107,15 @@ function loop(now){
 requestAnimationFrame(loop);
 
 document.getElementById('versionBar').textContent='WebDiablo v'+GAME_VERSION;
+
+// ====================== PWA: register service worker (offline support) ======================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(err => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
 </script>
 </body>
 </html>
