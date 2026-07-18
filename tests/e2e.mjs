@@ -79,6 +79,32 @@ try {
   const started = await page.evaluate(() => window.game.state === 'playing');
   check('game.start() enters playing state', started, 'state=' + await page.evaluate(() => window.game.state));
   check('no errors after start', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 001: Save System ---
+  // Force a known level/floor, save, reload, then CONTINUE should restore them.
+  await page.evaluate(() => {
+    window.game.player.level = 6;
+    window.game.floor = 8;
+    window.__TEST__.saveGame(window.game);
+  });
+  const savedLevel = await page.evaluate(() => window.game.player.level);
+  check('saveGame persisted state', savedLevel === 6);
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(300);
+  const continueVisible = await page.evaluate(() => {
+    const b = document.getElementById('continueBtn');
+    return b && b.style.display !== 'none';
+  });
+  check('CONTINUE button visible after reload with save', continueVisible);
+
+  await page.evaluate(() => window.game.continue());
+  await page.waitForTimeout(300);
+  const restored = await page.evaluate(() => ({ level: window.game.player.level, floor: window.game.floor, state: window.game.state }));
+  check('continue() restores saved level', restored.level === 6, 'level=' + restored.level);
+  check('continue() restores saved floor', restored.floor === 8, 'floor=' + restored.floor);
+  check('continue() enters playing state', restored.state === 'playing', 'state=' + restored.state);
+  check('no errors after continue', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message);
 } finally {

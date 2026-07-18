@@ -161,7 +161,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
     <button onclick="game.toggleEquipPanel()" style="margin-top:12px;width:100%;padding:6px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer">Close</button>
   </div>
   <div id="deathScreen"><h1>YOU DIED</h1><p>Your body lies among the fallen...</p><button onclick="game.respawn()">Rise Again</button></div>
-  <div id="startScreen"><h1>SHADOWS OF THE FORGOTTEN</h1><h2>A Dark Fantasy Dungeon Crawler</h2><button onclick="game.start()">ENTER THE DEPTHS</button><div class="controls">WASD/Arrows — Move<br>Mouse Left — Attack<br>Right-click / F — Fireball<br>E — Pick up items / Toggle Equipment<br>Tab — Toggle Stats<br>I — Inventory<br>1-5 — Use potions<br>ESC — Menu</div></div>
+  <div id="startScreen"><h1>SHADOWS OF THE FORGOTTEN</h1><h2>A Dark Fantasy Dungeon Crawler</h2><button onclick="game.start()">ENTER THE DEPTHS</button><button id="continueBtn" onclick="game.continue()" style="display:none;margin-top:10px;background:#3a5a2a">CONTINUE</button><div class="controls">WASD/Arrows — Move<br>Mouse Left — Attack<br>Right-click / F — Fireball<br>E — Pick up items / Toggle Equipment<br>Tab — Toggle Stats<br>I — Inventory<br>1-5 — Use potions<br>ESC — Menu</div></div>
   <div id="levelUp">LEVEL UP!</div>
   <div id="statsPanel"><h3>Character Stats</h3><div class="stat"><span>Strength:</span><span class="stat-val" id="statStr">10</span></div><div class="stat"><span>Dexterity:</span><span class="stat-val" id="statDex">10</span></div><div class="stat"><span>Intelligence:</span><span class="stat-val" id="statInt">10</span></div><div class="stat"><span>Attack Damage:</span><span class="stat-val" id="statDmg">15-25</span></div><div class="stat"><span>Defense:</span><span class="stat-val" id="statDef">5</span></div><div class="stat"><span>Attack Speed:</span><span class="stat-val" id="statAtkSpd">1.0</span></div></div>
   <div id="floorDisplay">Floor 1 — The Crypt of Souls</div>
@@ -170,7 +170,31 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.0.0';
+const GAME_VERSION = '1.1.0';
+// ==================== SAVE MANAGER (Feature 001) ====================
+const SAVE_KEY = 'webdiablo_save_v1';
+const SAVE_FORMAT = 1;
+function saveGame(g){
+  try{
+    if(!g||g.state!=='playing'||!g.player)return false;
+    const data={version:SAVE_FORMAT,ts:Date.now(),floor:g.floor,player:g.player};
+    localStorage.setItem(SAVE_KEY,JSON.stringify(data));
+    return true;
+  }catch(e){return false;}
+}
+function loadGame(){
+  try{
+    const raw=localStorage.getItem(SAVE_KEY);
+    if(!raw)return null;
+    const data=JSON.parse(raw);
+    if(!data||data.version!==SAVE_FORMAT||!data.player||typeof data.floor!=='number')return null;
+    return data;
+  }catch(e){return null;}
+}
+function hasSave(){return loadGame()!==null;}
+function clearSave(){try{localStorage.removeItem(SAVE_KEY);}catch(e){}}
+// Test hooks (used by unit + e2e; harmless in production)
+window.__TEST__={saveGame,loadGame,hasSave,clearSave,SAVE_KEY,SAVE_FORMAT};
 // ==================== AUDIO ENGINE ====================
 class AudioEngine {
   constructor(){this.ctx=null;this.enabled=false}
@@ -526,6 +550,20 @@ class Game {
     this.updateUI();
     this.lastTime=performance.now();
   }
+  continue(){
+    const data=loadGame();
+    if(!data){this.start();return;}
+    document.getElementById('startScreen').style.display='none';
+    this.audio.init();
+    this.state='playing';
+    this.floor=data.floor;
+    this.player=data.player;
+    this.generateFloor();
+    this.recalcStats&&this.recalcStats();
+    this.updateUI();
+    this.lastTime=performance.now();
+    this.logMsg&&this.logMsg('Welcome back, wanderer...','#ffd700');
+  }
   generateFloor(){
     const size=30+this.floor*3;
     this.dungeon=new Dungeon(size,size);
@@ -671,6 +709,7 @@ class Game {
       this.generateFloor();
       this.logMsg(`Descended to Floor ${this.floor}...`,'#ffd700');
       this.audio.play('boss');
+      saveGame(this);
     }
     // Check loot on ground
     for(let i=this.loot.length-1;i>=0;i--){
@@ -782,6 +821,7 @@ class Game {
         this.audio.play('levelup');
         document.getElementById('levelUp').style.display='block';
         setTimeout(()=>document.getElementById('levelUp').style.display='none',2000);
+        saveGame(this);
         this.particles.emit(p.x*32+16,p.y*32+16,40,{colors:['#ffd700','#ffaa00','#ff8800','#ffffff'],speed:150,life:1.5,size:4,type:'spark'});
         this.logMsg(`LEVEL UP! Now level ${p.level}!`,'#ffd700');
       }
@@ -818,6 +858,7 @@ class Game {
               this.audio.play('death');
               document.getElementById('deathScreen').style.display='flex';
               this.state='dead';
+              clearSave();
               return;
             }
           }
@@ -1432,6 +1473,19 @@ class Game {
 
 const game=new Game();
 window.game=game; // expose for E2E tests / debugging
+
+// Feature 001: show CONTINUE if a save exists, and autosave while playing
+(function(){
+  const cb=document.getElementById('continueBtn');
+  if(cb) cb.style.display = (typeof hasSave==='function' && hasSave()) ? 'block' : 'none';
+  let lastSave=0;
+  setInterval(()=>{
+    if(window.game && window.game.state==='playing'){
+      const now=performance.now();
+      if(now-lastSave>15000){ saveGame(window.game); lastSave=now; }
+    }
+  },3000);
+})();
 
 // ==================== INPUT ====================
 document.addEventListener('keydown',e=>{
