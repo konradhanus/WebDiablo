@@ -49,18 +49,21 @@ test('getSettings falls back to defaults on corrupt data', () => {
   assert.equal(s.sfx, 80); assert.equal(s.muted, false);
 });
 
-test('applySettings sets audio master gain from settings', () => {
+test('applySettings sets audio volumes from settings', () => {
   const { sandbox } = harness();
-  const audio = { muted: false, master: 1, setMuted() {}, setMaster(v) { this.master = v; } };
+  const audio = { muted:false, master:1, music:1, sfx:1,
+    setVolumes(v){ this.master=v.master/100; this.music=v.music/100; this.sfx=v.sfx/100; this.muted=!!v.muted; } };
   sandbox.saveSettings({ master: 50, sfx: 50, music: 80, muted: false });
   sandbox.applySettings({ audio });
-  // master/(100) * sfx/(100) = 0.5*0.5 = 0.25
-  assert.equal(audio.master, 0.25);
+  assert.equal(audio.master, 0.5);
+  assert.equal(audio.sfx, 0.5);
+  assert.equal(audio.music, 0.8);
 });
 
 test('applySettings mutes when muted=true', () => {
   const { sandbox } = harness();
-  const audio = { muted: false, master: 1, setMuted(m) { this.muted = m; }, setMaster() {} };
+  const audio = { muted: false, master: 1, music: 1, sfx: 1,
+    setVolumes(v){ this.master=v.master/100; this.music=v.music/100; this.sfx=v.sfx/100; this.muted=!!v.muted; } };
   sandbox.saveSettings({ master: 80, sfx: 80, music: 80, muted: true });
   sandbox.applySettings({ audio });
   assert.equal(audio.muted, true);

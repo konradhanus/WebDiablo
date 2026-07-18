@@ -347,6 +347,25 @@ try {
   check('boss death opens gates', boss.gatesOpen === true, 'gatesOpen=' + boss.gatesOpen);
   check('boss death drops loot', boss.lootDropped === true, 'loot=' + boss.lootDropped);
   check('no errors after boss', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 018: Sound & Music ---
+  const snd = await page.evaluate(() => {
+    const g = window.game;
+    g.audio.init();
+    const names=['hit','kill','scream','hurt','fire','boss','heal','levelup','pickup','ui','wave','death','magic','steps'];
+    let played=0;
+    for(const n of names){ try{ g.audio.play(n); played++; }catch(e){} }
+    g.audio.startDrone();
+    const droneOn = g.audio.droneOn === true;
+    g.audio.setVolumes({master:50,music:30,sfx:90,muted:false});
+    const volApplied = g.audio.master===0.5 && g.audio.music===0.3 && g.audio.sfx===0.9;
+    g.audio.stopDrone();
+    return { total:names.length, played, droneOn, volApplied };
+  });
+  check('all SFX play without error', snd.played === snd.total, `played ${snd.played}/${snd.total}`);
+  check('drone starts', snd.droneOn === true, 'droneOn=' + snd.droneOn);
+  check('volume mixer applies', snd.volApplied === true, 'vol=' + snd.volApplied);
+  check('no errors after sound', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message + '\n' + (e.stack||''));
 } finally {
