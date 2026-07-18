@@ -99,6 +99,25 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 #waveBanner{position:absolute;top:32%;left:50%;transform:translate(-50%,-50%) scale(.6);z-index:60;font-family:'Cinzel',Georgia,serif;font-size:48px;font-weight:900;color:#ff4422;text-shadow:0 0 20px #ff0000,3px 3px 0 #330000;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;text-align:center}
 #waveBanner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 #waveBanner.clear{color:#ffdd44;text-shadow:0 0 20px #ffaa00,3px 3px 0 #332200}
+/* ===== Feature 019: Achievements ===== */
+#toastWrap{position:fixed;top:120px;left:50%;transform:translateX(-50%);z-index:300;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{background:rgba(20,10,5,.95);border:2px solid #ffd700;border-radius:8px;padding:8px 18px;text-align:center;color:#ffd700;font-family:Georgia,serif;box-shadow:0 0 20px rgba(255,215,0,.4);opacity:0;transform:translateY(-20px) scale(.9);transition:opacity .4s,transform .4s}
+.toast.show{opacity:1;transform:translateY(0) scale(1)}
+.toast.hide{opacity:0;transform:translateY(-10px)}
+.toast-main{font-size:16px;font-weight:bold}
+.toast-sub{font-size:11px;color:#ccaa66}
+#achPanel{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:210;background:rgba(15,8,5,.97);border:2px solid #5a3a1a;border-radius:10px;padding:20px 26px;min-width:340px;color:#e8d8b0;font-family:Georgia,serif;box-shadow:0 0 40px rgba(0,0,0,.7)}
+#achPanel h2{color:#ffd700;margin:0 0 14px;font-family:'Cinzel',Georgia,serif;display:flex;justify-content:space-between;align-items:center}
+.ach-count{font-size:14px;color:#aa8844}
+.ach-list{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto}
+.ach-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:5px;background:rgba(255,255,255,.03)}
+.ach-row.unlocked{background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.3)}
+.ach-row.locked{opacity:.5}
+.ach-icon{font-size:20px;width:26px;text-align:center}
+.ach-name{font-weight:bold;min-width:120px}
+.ach-desc{font-size:12px;color:#ccaa66}
+.ach-meta{margin-top:14px;font-size:13px;color:#aa8844;border-top:1px solid #3a2a1a;padding-top:10px}
+#achPanel button{margin-top:14px;width:100%;padding:8px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer}
 /* ===== Feature 017: Boss HP bar ===== */
 #bossBar{position:absolute;top:96px;left:50%;transform:translateX(-50%);z-index:30;width:min(560px,70vw);text-align:center;font-family:Georgia,serif;color:#ff8866;display:none}
 #bossBar.show{display:block}
@@ -240,6 +259,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
     <button onclick="game.toggleEquipPanel()" style="margin-top:12px;width:100%;padding:6px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer">Close</button>
   </div>
   <div id="deathScreen"><h1>YOU DIED</h1><p>Your body lies among the fallen...</p><button onclick="game.respawn()">Rise Again</button></div>
+  <div id="achPanel" style="display:none"></div>
   <div id="settingsPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(15,8,5,.95);border:2px solid #5a3a1a;border-radius:8px;padding:20px;z-index:200;min-width:280px;color:#e8d8b0;font-family:monospace">
     <h2 style="color:#ffd700;margin-top:0">Settings</h2>
     <label>Master Volume <input type="range" id="setMaster" min="0" max="100" value="80" style="width:140px"></label><br><br>
@@ -284,7 +304,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.10.0';
+const GAME_VERSION = '1.11.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -796,6 +816,31 @@ function bossTemplateFor(floor){
     speed:28, xp:200+tier*150, boss:true, drops:['rare','legendary','mythic']
   };
 }
+// Feature 019: Achievements
+const ACHIEVEMENTS=[
+  {id:'first_blood',name:'First Blood',desc:'Defeat your first enemy',icon:'🩸'},
+  {id:'boss_slayer',name:'Boss Slayer',desc:'Defeat a boss',icon:'👑'},
+  {id:'carnage_king',name:'Carnage King',desc:'Reach a 10-kill bloodlust streak',icon:'💀'},
+  {id:'wave_survivor',name:'Wave Survivor',desc:'Clear wave 3 or higher',icon:'🌊'},
+  {id:'squad_commander',name:'Squad Commander',desc:'Field a full squad of 3',icon:'⚔️'},
+  {id:'floor_diver',name:'Floor Diver',desc:'Descend to floor 10',icon:'⬇️'},
+  {id:'untouched',name:'Untouched',desc:'Clear a floor without taking damage',icon:'✨'},
+];
+const ACH_KEY='webdiablo_achievements';
+const META_KEY='webdiablo_meta';
+// Feature 019: persistent storage
+function loadAchievements(){
+  try{return JSON.parse(localStorage.getItem(ACH_KEY)||'{}');}catch(e){return {};}
+}
+function saveAchievements(a){
+  try{localStorage.setItem(ACH_KEY,JSON.stringify(a));}catch(e){}
+}
+function loadMeta(){
+  try{return Object.assign({bosses:0,deepest:1},JSON.parse(localStorage.getItem(META_KEY)||'{}'));}catch(e){return {bosses:0,deepest:1};}
+}
+function saveMeta(m){
+  try{localStorage.setItem(META_KEY,JSON.stringify(m));}catch(e){}
+}
 
 // ==================== GAME ====================
 const canvas=document.getElementById('gameCanvas');
@@ -826,6 +871,9 @@ class Game {
     this.fireballCd=0; // Feature 016: skill bar cooldown
     this.bossArena=false; // Feature 017: boss encounter active
     this.boss=null; // Feature 017: current boss ref
+    this.achievements=loadAchievements(); // Feature 019
+    this.meta=loadMeta(); // Feature 019: {bosses,deepest}
+    this.floorDamageTaken=0; // Feature 019: untouched tracking
     this.time=0;
   }
   start(){
@@ -846,6 +894,12 @@ class Game {
       critChance:5,lifesteal:0,
       spells:{fireball:false,icebolt:false,holybolt:false}
     };
+    // Feature 019: meta-progression — permanent max-HP bonus from bosses slain (cap +20%)
+    const metaBonus=Math.min(0.2,this.meta.bosses*0.02);
+    if(metaBonus>0){
+      this.player.maxHp=Math.floor(this.player.maxHp*(1+metaBonus));
+      this.player.hp=this.player.maxHp;
+    }
     this.player.inventory=[
       generateItem(1,'ring'),generateItem(1,'ring')
     ];
@@ -894,6 +948,9 @@ class Game {
     this.player.x=pos.x;this.player.y=pos.y;
     this.player.invuln=2;
     this.enemies=[];this.loot=[];this.projectiles=[];
+    this.floorDamageTaken=0; // Feature 019: reset per-floor
+    if(this.floor>=10)this.unlock('floor_diver'); // Feature 019
+    if(this.floor>this.meta.deepest){this.meta.deepest=this.floor;saveMeta(this.meta);}
     this.dungeon.markVisible(this.player.x,this.player.y,8);
     this.spawnEnemies();
     const floorName=FLOOR_NAMES[Math.min(this.floor-1,FLOOR_NAMES.length-1)];
@@ -1023,7 +1080,47 @@ class Game {
     this.audio.play('hurt'); // Feature 018
     this.shakeTimer=0.12;this.shakeIntensity=4;
     this.floatingTexts.push({x:p.x,y:p.y-.5,text:dmg,color:'#ff2200',life:1,vy:-40});
+    this.floorDamageTaken+=dmg; // Feature 019
     if(p.hp<=0){p.hp=0;this.audio.play('death');this.audio.stopDrone();document.getElementById('deathScreen').style.display='flex';this.state='dead';}
+  }
+  // ==================== ACHIEVEMENTS (Feature 019) ====================
+  unlock(id){
+    if(this.achievements[id])return false;
+    const a=ACHIEVEMENTS.find(x=>x.id===id);
+    if(!a)return false;
+    this.achievements[id]=true;
+    saveAchievements(this.achievements);
+    this.toast(a.icon+' '+a.name,a.desc);
+    this.audio.play('levelup');
+    this.logMsg('Achievement: '+a.name,'#ffd700');
+    return true;
+  }
+  toast(text,sub){
+    let c=document.getElementById('toastWrap');
+    if(!c){c=document.createElement('div');c.id='toastWrap';document.body.appendChild(c);}
+    const el=document.createElement('div');el.className='toast';
+    el.innerHTML='<div class="toast-main">'+text+'</div>'+(sub?'<div class="toast-sub">'+sub+'</div>':'');
+    c.appendChild(el);
+    setTimeout(()=>{el.classList.add('show');},10);
+    setTimeout(()=>{el.classList.add('hide');setTimeout(()=>el.remove(),500);},3200);
+  }
+  toggleAchPanel(){
+    const p=document.getElementById('achPanel');
+    if(!p)return;
+    if(p.style.display==='flex'){p.style.display='none';return;}
+    this.renderAchPanel();p.style.display='flex';
+  }
+  renderAchPanel(){
+    const p=document.getElementById('achPanel');if(!p)return;
+    const got=Object.keys(this.achievements).filter(k=>this.achievements[k]).length;
+    let html='<h2>Achievements <span class="ach-count">'+got+'/'+ACHIEVEMENTS.length+'</span></h2><div class="ach-list">';
+    for(const a of ACHIEVEMENTS){
+      const unlocked=this.achievements[a.id];
+      html+='<div class="ach-row '+(unlocked?'unlocked':'locked')+'"><span class="ach-icon">'+(unlocked?a.icon:'🔒')+'</span><span class="ach-name">'+(unlocked?a.name:'???')+'</span><span class="ach-desc">'+(unlocked?a.desc:'Locked')+'</span></div>';
+    }
+    html+='</div><div class="ach-meta">Bosses slain: '+this.meta.bosses+' · Deepest floor: '+this.meta.deepest+'</div>';
+    html+='<button onclick="game.toggleAchPanel()">Close (V)</button>';
+    p.innerHTML=html;
   }
   respawn(){
     document.getElementById('deathScreen').style.display='none';
@@ -1112,6 +1209,7 @@ class Game {
     }
     // Check stairs
     if(this.dungeon.get(Math.round(p.x),Math.round(p.y))===TILE.STAIRS){
+      if(this.floorDamageTaken===0)this.unlock('untouched'); // Feature 019
       this.floor++;
       this.generateFloor();
       this.logMsg(`Descended to Floor ${this.floor}...`,'#ffd700');
@@ -1220,6 +1318,7 @@ class Game {
           this.showBanner('WAVE CLEARED','clear');
           this.logMsg(`Wave ${w.num} cleared! +${bonus} XP`,'#ffdd44');
           this.audio.play('levelup');
+          if(w.num>=3)this.unlock('wave_survivor'); // Feature 019
           w.active=false;
           w.timer=25;
         }
@@ -1370,12 +1469,16 @@ class Game {
       this.carnage.streak++;
       this.carnage.streakTimer=4;
       this.updateUI(); // refresh carnage/bloodlust HUD
+      if(this.carnage.kills===1)this.unlock('first_blood'); // Feature 019
+      if(this.carnage.streak>=10)this.unlock('carnage_king'); // Feature 019
       // Feature 017: BOSS death — guaranteed rare+ loot, big XP, gates open
       if(e.boss){
         const bonus=100*this.floor;
         p.xp+=bonus;
         this.bossArena=false;this.boss=null;
-        this.showBanner('VICTORY — '+e.name+' SLAIN','victory');
+        this.unlock('boss_slayer'); // Feature 019
+        this.meta.bosses++;saveMeta(this.meta); // Feature 019
+        this.gatesOpen=true;this.showBanner('VICTORY — '+e.name+' SLAIN','victory');
         this.audio.play('boss');
         this.logMsg(`VICTORY! ${e.name} defeated (+${bonus} XP)`,'#ffdd44');
         // guaranteed drop: pick a high rarity
@@ -1684,6 +1787,7 @@ class Game {
     this.logMsg(`Recruited ${m.name} to the squad`,'#ffd700');
     this.particles.emit(m.x*32+16,m.y*32+16,12,{colors:['#ffd700','#ffaa00'],speed:80,life:.6,size:3,type:'spark'});
     this.updateUI();
+    if(this.squad.length>=MAX_SQUAD)this.unlock('squad_commander'); // Feature 019
     return true;
   }
   updateSquad(dt){
@@ -2304,6 +2408,7 @@ document.addEventListener('keydown',e=>{
   if(e.code==='KeyO')game.toggleSettings();
   if(e.code==='KeyQ')game.recruitMerc();
   if(e.code==='KeyR'){game.squadHold=!game.squadHold;game.updateUI();game.logMsg(game.squadHold?'Squad holding position':'Squad following','#ffd700');}
+  if(e.code==='KeyV')game.toggleAchPanel(); // Feature 019
 });
 // Feature 002: settings sliders
 ['setMaster','setMusic','setSfx'].forEach(id=>{

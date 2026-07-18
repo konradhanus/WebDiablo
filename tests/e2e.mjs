@@ -366,6 +366,27 @@ try {
   check('drone starts', snd.droneOn === true, 'droneOn=' + snd.droneOn);
   check('volume mixer applies', snd.volApplied === true, 'vol=' + snd.volApplied);
   check('no errors after sound', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 019: Achievements & Progression ---
+  const ach = await page.evaluate(() => {
+    const g = window.game;
+    try{ localStorage.removeItem('webdiablo_achievements'); localStorage.removeItem('webdiablo_meta'); }catch(e){}
+    g.achievements = {}; g.meta = {bosses:0,deepest:1};
+    const first = g.unlock('first_blood');
+    const firstAgain = g.unlock('first_blood');
+    g.meta.bosses = 5;
+    const bonus = Math.min(0.2, g.meta.bosses*0.02);
+    const expectedMax = Math.floor(100*(1+bonus));
+    g.toggleAchPanel();
+    const panelOpen = document.getElementById('achPanel').style.display === 'flex';
+    g.toggleAchPanel();
+    const panelClosed = document.getElementById('achPanel').style.display === 'none';
+    return { first, firstAgain, bonus, expectedMax, panelOpen, panelClosed };
+  });
+  check('first_blood unlocks once', ach.first === true && ach.firstAgain === false, 'first=' + ach.first + ' again=' + ach.firstAgain);
+  check('meta HP bonus +10% at 5 bosses', ach.bonus === 0.1 && ach.expectedMax === 110, 'bonus=' + ach.bonus);
+  check('achievements panel toggles (V)', ach.panelOpen === true && ach.panelClosed === true, 'open=' + ach.panelOpen);
+  check('no errors after achievements', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message + '\n' + (e.stack||''));
 } finally {
