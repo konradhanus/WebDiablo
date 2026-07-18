@@ -1,0 +1,11 @@
+# Tasks: Settings Menu & Volume
+- [ ] T1: AudioEngine gains (master/music/sfx) + setBusGain.
+- [ ] T2: SettingsManager DEFAULTS/getSettings/saveSettings/applySettings (localStorage v1).
+- [ ] T3: window.__TEST__.settings hooks.
+- [ ] T4: #settingsPanel HTML (3 sliders + mute + close).
+- [ ] T5: game.toggleSettings() + key O binding.
+- [ ] T6: boot: load+apply settings.
+- [ ] T7: unit tests (defaults, save/load round-trip, invalid→defaults).
+- [ ] T8: e2e (open panel, set volume, reload retains).
+- [ ] T9: build+test green.
+- [ ] T10: release 1.2.0.

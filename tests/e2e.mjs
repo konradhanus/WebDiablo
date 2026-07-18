@@ -105,6 +105,24 @@ try {
   check('continue() restores saved floor', restored.floor === 8, 'floor=' + restored.floor);
   check('continue() enters playing state', restored.state === 'playing', 'state=' + restored.state);
   check('no errors after continue', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 002: Settings & Volume ---
+  await page.evaluate(() => window.game.toggleSettings());
+  await page.waitForTimeout(150);
+  const panelOpen = await page.evaluate(() => document.getElementById('settingsPanel').style.display === 'block');
+  check('settings panel opens', panelOpen);
+  await page.evaluate(() => {
+    const el = document.getElementById('setMaster');
+    el.value = 25;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('webdiablo_settings_v1')));
+  check('volume slider persists to localStorage', stored && stored.master === 25, JSON.stringify(stored));
+  await page.evaluate(() => window.game.toggleSettings());
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(300);
+  const retained = await page.evaluate(() => window.__TEST__.settings.getSettings().master);
+  check('settings retained after reload', retained === 25, 'master=' + retained);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message);
 } finally {

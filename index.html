@@ -161,6 +161,14 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
     <button onclick="game.toggleEquipPanel()" style="margin-top:12px;width:100%;padding:6px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer">Close</button>
   </div>
   <div id="deathScreen"><h1>YOU DIED</h1><p>Your body lies among the fallen...</p><button onclick="game.respawn()">Rise Again</button></div>
+  <div id="settingsPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(15,8,5,.95);border:2px solid #5a3a1a;border-radius:8px;padding:20px;z-index:200;min-width:280px;color:#e8d8b0;font-family:monospace">
+    <h2 style="color:#ffd700;margin-top:0">Settings</h2>
+    <label>Master Volume <input type="range" id="setMaster" min="0" max="100" value="80" style="width:140px"></label><br><br>
+    <label>Music <input type="range" id="setMusic" min="0" max="100" value="80" style="width:140px"></label><br><br>
+    <label>SFX <input type="range" id="setSfx" min="0" max="100" value="80" style="width:140px"></label><br><br>
+    <label>Mute <input type="checkbox" id="setMute"></label><br><br>
+    <button onclick="game.toggleSettings()" style="background:#3a5a2a;color:#fff;padding:6px 14px;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer">Close</button>
+  </div>
   <div id="startScreen"><h1>SHADOWS OF THE FORGOTTEN</h1><h2>A Dark Fantasy Dungeon Crawler</h2><button onclick="game.start()">ENTER THE DEPTHS</button><button id="continueBtn" onclick="game.continue()" style="display:none;margin-top:10px;background:#3a5a2a">CONTINUE</button><div class="controls">WASD/Arrows — Move<br>Mouse Left — Attack<br>Right-click / F — Fireball<br>E — Pick up items / Toggle Equipment<br>Tab — Toggle Stats<br>I — Inventory<br>1-5 — Use potions<br>ESC — Menu</div></div>
   <div id="levelUp">LEVEL UP!</div>
   <div id="statsPanel"><h3>Character Stats</h3><div class="stat"><span>Strength:</span><span class="stat-val" id="statStr">10</span></div><div class="stat"><span>Dexterity:</span><span class="stat-val" id="statDex">10</span></div><div class="stat"><span>Intelligence:</span><span class="stat-val" id="statInt">10</span></div><div class="stat"><span>Attack Damage:</span><span class="stat-val" id="statDmg">15-25</span></div><div class="stat"><span>Defense:</span><span class="stat-val" id="statDef">5</span></div><div class="stat"><span>Attack Speed:</span><span class="stat-val" id="statAtkSpd">1.0</span></div></div>
@@ -170,7 +178,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.1.0';
+const GAME_VERSION = '1.2.0';
 // ==================== SAVE MANAGER (Feature 001) ====================
 const SAVE_KEY = 'webdiablo_save_v1';
 const SAVE_FORMAT = 1;
@@ -195,15 +203,50 @@ function hasSave(){return loadGame()!==null;}
 function clearSave(){try{localStorage.removeItem(SAVE_KEY);}catch(e){}}
 // Test hooks (used by unit + e2e; harmless in production)
 window.__TEST__={saveGame,loadGame,hasSave,clearSave,SAVE_KEY,SAVE_FORMAT};
+// ==================== SETTINGS MANAGER (Feature 002) ====================
+const SETTINGS_KEY='webdiablo_settings_v1';
+const SETTINGS_DEFAULTS={master:80,music:80,sfx:80,muted:false};
+function getSettings(){
+  try{
+    const raw=localStorage.getItem(SETTINGS_KEY);
+    if(!raw)return {...SETTINGS_DEFAULTS};
+    const s=JSON.parse(raw);
+    return {
+      master:typeof s.master==='number'?s.master:SETTINGS_DEFAULTS.master,
+      music:typeof s.music==='number'?s.music:SETTINGS_DEFAULTS.music,
+      sfx:typeof s.sfx==='number'?s.sfx:SETTINGS_DEFAULTS.sfx,
+      muted:typeof s.muted==='boolean'?s.muted:SETTINGS_DEFAULTS.muted
+    };
+  }catch(e){return {...SETTINGS_DEFAULTS};}
+}
+function saveSettings(s){
+  try{localStorage.setItem(SETTINGS_KEY,JSON.stringify({...SETTINGS_DEFAULTS,...s}));return true;}catch(e){return false;}
+}
+function applySettings(game){
+  const s=getSettings();
+  if(game&&game.audio){game.audio.setMuted(s.muted);game.audio.setMaster((s.master/100)*(s.sfx/100));}
+  return s;
+}
+window.__TEST__.settings={getSettings,saveSettings,applySettings,DEFAULTS:SETTINGS_DEFAULTS};
 // ==================== AUDIO ENGINE ====================
 class AudioEngine {
-  constructor(){this.ctx=null;this.enabled=false}
-  init(){try{this.ctx=new(window.AudioContext||window.webkitAudioContext)();this.enabled=true}catch(e){}}
+  constructor(){this.ctx=null;this.enabled=false;this.master=1;this.muted=false;}
+  init(){
+    try{
+      this.ctx=new(window.AudioContext||window.webkitAudioContext)();
+      this.masterGain=this.ctx.createGain();
+      this.masterGain.gain.value=this.muted?0:this.master;
+      this.masterGain.connect(this.ctx.destination);
+      this.enabled=true;
+    }catch(e){}
+  }
+  setMaster(v){this.master=Math.max(0,Math.min(1,v));if(this.masterGain)this.masterGain.gain.value=this.muted?0:this.master;}
+  setMuted(m){this.muted=!!m;if(this.masterGain)this.masterGain.gain.value=this.muted?0:this.master;}
   play(type){
     if(!this.enabled)return;
     const c=this.ctx,t=c.currentTime;
     const o=c.createOscillator(),g=c.createGain();
-    o.connect(g);g.connect(c.destination);
+    o.connect(g);g.connect(this.masterGain||c.destination);
     switch(type){
       case'sword':o.type='sawtooth';o.frequency.setValueAtTime(200,t);o.frequency.exponentialRampToValueAtTime(80,t+.15);g.gain.setValueAtTime(.15,t);g.gain.exponentialRampToValueAtTime(.001,t+.2);o.start(t);o.stop(t+.2);break;
       case'hit':o.type='square';o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(50,t+.1);g.gain.setValueAtTime(.2,t);g.gain.exponentialRampToValueAtTime(.001,t+.15);o.start(t);o.stop(t+.15);break;
@@ -563,6 +606,18 @@ class Game {
     this.updateUI();
     this.lastTime=performance.now();
     this.logMsg&&this.logMsg('Welcome back, wanderer...','#ffd700');
+  }
+  toggleSettings(){
+    const p=document.getElementById('settingsPanel');
+    if(!p)return;
+    if(p.style.display==='none'||!p.style.display){
+      const s=getSettings();
+      document.getElementById('setMaster').value=s.master;
+      document.getElementById('setMusic').value=s.music;
+      document.getElementById('setSfx').value=s.sfx;
+      document.getElementById('setMute').checked=s.muted;
+      p.style.display='block';
+    }else{p.style.display='none';}
   }
   generateFloor(){
     const size=30+this.floor*3;
@@ -1485,6 +1540,7 @@ window.game=game; // expose for E2E tests / debugging
       if(now-lastSave>15000){ saveGame(window.game); lastSave=now; }
     }
   },3000);
+  applySettings(window.game); // Feature 002: load saved volume on boot
 })();
 
 // ==================== INPUT ====================
@@ -1497,7 +1553,17 @@ document.addEventListener('keydown',e=>{
   if(e.code==='Digit3')game.usePotion(2);
   if(e.code==='Digit4')game.usePotion(3);
   if(e.code==='Digit5')game.usePotion(4);
+  if(e.code==='KeyO')game.toggleSettings();
 });
+// Feature 002: settings sliders
+['setMaster','setMusic','setSfx'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('input',()=>{
+    const s=getSettings();s[id.replace('set','').toLowerCase()]=Number(el.value);saveSettings(s);applySettings(game);
+  });
+});
+const muteEl=document.getElementById('setMute');
+if(muteEl)muteEl.addEventListener('change',()=>{const s=getSettings();s.muted=muteEl.checked;saveSettings(s);applySettings(game);});
 document.addEventListener('keyup',e=>{game.keys[e.code]=false});
 canvas.addEventListener('mousemove',e=>{game.mouse.x=e.clientX;game.mouse.y=e.clientY});
 canvas.addEventListener('mousedown',e=>{
