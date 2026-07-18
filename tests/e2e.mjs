@@ -227,6 +227,38 @@ try {
   check('merc death increments KIA', squad.kiaAfter > squad.kiaBefore, `KIA ${squad.kiaBefore} -> ${squad.kiaAfter}`);
   check('squad HUD shows 3 pips', squad.pips === 3, 'pips=' + squad.pips);
   check('no errors after squad combat', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 014: Blood & Gore / Bloodlust ---
+  const gore = await page.evaluate(() => {
+    if (window.game.state !== 'playing') window.game.start();
+    const g = window.game;
+    g.carnage = { kills:0, streak:0, streakTimer:0 };
+    g.particles.particles.length = 0; // clear for clean measure
+    g.player.x = 5; g.player.y = 5; g.player.dir = 1;
+    // First kill
+    g.enemies = [{ name:'A', hp:1, maxHp:1, def:0, dmg:0, color:'#888', size:14, xp:5,
+                   icon:'💀', x:6, y:5, state:'idle', stateTimer:0, aggroRange:0, attackRange:1,
+                   attackCooldown:0, hitFlash:0, deathTimer:0, dead:false, drops:['common'] }];
+    g.mouse.down = true; g.update(0.1); g.mouse.down = false;
+    const afterFirst = g.particles.particles.length;
+    const streakAfter1 = g.carnage.streak;
+    // Second kill → streak 2 → bloodlustMult should be >1
+    g.player.attackCooldown = 0; // reset swing cooldown so second swing lands
+    g.enemies = [{ name:'B', hp:1, maxHp:1, def:0, dmg:0, color:'#888', size:14, xp:5,
+                   icon:'💀', x:6, y:5, state:'idle', stateTimer:0, aggroRange:0, attackRange:1,
+                   attackCooldown:0, hitFlash:0, deathTimer:0, dead:false, drops:['common'] }];
+    g.mouse.down = true; g.update(0.1); g.mouse.down = false;
+    const blm = g.bloodlustMult();
+    const carnText = document.getElementById('carnageText').textContent;
+    const blText = document.getElementById('bloodlustText').textContent;
+    return { afterFirst, streakAfter1, blm, kills: g.carnage.kills, carnText, blText };
+  });
+  check('gib particles spawned on death', gore.afterFirst > 5, 'particles=' + gore.afterFirst);
+  check('streak increments on kill', gore.streakAfter1 === 1, 'streak=' + gore.streakAfter1);
+  check('bloodlust mult > 1 after streak', gore.blm > 1, 'blm=' + gore.blm);
+  check('carnage HUD shows kills', /Kills: 2/.test(gore.carnText), gore.carnText);
+  check('bloodlust HUD shows streak', /BLOODLUST x2/.test(gore.blText), gore.blText);
+  check('no errors after gore', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message);
 } finally {

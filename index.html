@@ -93,7 +93,8 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 .squad-pip.alive{background:radial-gradient(circle at 35% 35%,#ffd700,#aa8800);border-color:#ffd700;box-shadow:0 0 6px rgba(255,215,0,.5)}
 .squad-pip.dead{background:#3a1010;border-color:#661010}
 #squadBar{position:absolute;bottom:92px;left:10px;z-index:10;display:flex;align-items:center;gap:8px}
-#squadBar .kia{color:#aa4444;font-size:11px;font-family:monospace;text-shadow:1px 1px 2px #000}
+#carnageBar{position:absolute;bottom:112px;left:10px;z-index:10;font-family:monospace;font-size:12px;color:#cc6655;text-shadow:1px 1px 2px #000}
+#carnageBar #bloodlustText{color:#ff8800;font-weight:bold;margin-left:8px}
 #squadBtns{position:absolute;bottom:92px;right:12px;z-index:10;display:flex;gap:6px}
 #squadBtns button{padding:6px 10px;font-size:11px;font-family:monospace;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer}
 #squadBtns button:hover{box-shadow:0 0 8px rgba(255,136,0,.4)}
@@ -213,6 +214,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
   <div id="floorDisplay">Floor 1 — The Crypt of Souls</div>
   <div id="combatLog"></div>
   <div id="squadBar"><span id="squadPips"></span><span class="kia" id="kiaText">KIA: 0</span></div>
+  <div id="carnageBar"><span id="carnageText">Kills: 0</span> <span id="bloodlustText"></span></div>
   <div id="squadBtns">
     <button id="recruitBtn" title="Recruit mercenary (Q)">+ Squad (Q)</button>
     <button id="holdBtn" title="Toggle hold position (R)">Hold (R)</button>
@@ -221,7 +223,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.5.0';
+const GAME_VERSION = '1.6.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -365,6 +367,10 @@ class ParticleSystem {
       }else if(p.type==='ember'){
         ctx.save();ctx.translate(sx,sy);ctx.rotate(p.rotation);
         ctx.fillRect(-p.size,-p.size*.3,p.size*2,p.size*.6);
+        ctx.restore();
+      }else if(p.type==='gib'){
+        ctx.save();ctx.translate(sx,sy);ctx.rotate(p.rotation);
+        ctx.fillRect(-p.size,-p.size*.7,p.size*2,p.size*1.4);
         ctx.restore();
       }
     }
@@ -638,6 +644,7 @@ class Game {
     this.squad=[]; // Feature 013: recruited mercenaries
     this.kiaCount=0; // Feature 013: mercs lost (Cannon-Fodder memorial)
     this.squadHold=false; // Feature 013: hold-position toggle
+    this.carnage={kills:0,streak:0,streakTimer:0}; // Feature 014: bloodlust meter
     this.time=0;
   }
   start(){
@@ -782,6 +789,8 @@ class Game {
     this.updateFloatingTexts(dt);
     // Feature 012: age blood decals
     for(let i=this.bloods.length-1;i>=0;i--){this.bloods[i].age+=dt;if(this.bloods[i].age>22)this.bloods.splice(i,1);}
+    // Feature 014: bloodlust streak decay
+    if(this.carnage.streakTimer>0){this.carnage.streakTimer-=dt;if(this.carnage.streakTimer<=0)this.carnage.streak=0;}
     if(this.shakeTimer>0)this.shakeTimer-=dt;
   }
   updatePlayer(dt){
@@ -900,18 +909,23 @@ class Game {
     const variance=.8+Math.random()*.4;
     return Math.floor(base*variance);
   }
+  bloodlustMult(){ // Feature 014: +5% dmg per streak kill, capped at +50%
+    return 1+Math.min(this.carnage.streak,10)*0.05;
+  }
   hitEnemy(e,dmg){
     const p=this.player;
-    const actualDmg=Math.max(1,dmg-e.def);
+    const blm=this.bloodlustMult(); // Feature 014: bloodlust damage boost
+    const actualDmg=Math.max(1,Math.floor((dmg-e.def)*blm));
     e.hp-=actualDmg;
     e.hitFlash=.2;
     e.state='chase';e.stateTimer=3;
     this.audio.play('hit');
-    this.shakeTimer=.08;this.shakeIntensity=2;
-    // Blood particles
-    this.particles.emit(e.x*32+16,e.y*32+16,8,{colors:['#cc0000','#880000','#ff2200'],speed:80,life:.4,size:2,type:'circle'});
+    this.shakeTimer=Math.max(this.shakeTimer,.08);this.shakeIntensity=Math.max(this.shakeIntensity,2);
+    // Feature 014: directional blood spray (from enemy away from player)
+    const ang=Math.atan2(e.y-p.y,e.x-p.x);
+    this.particles.emit(e.x*32+16,e.y*32+16,7,{colors:['#cc0000','#880000','#ff2200'],speed:120,life:.45,size:2.5,type:'circle',angle:ang,spread:1.4});
     // Floating damage text
-    this.floatingTexts.push({x:e.x,y:e.y-.5,text:actualDmg,color:'#ff4400',life:1,vy:-40});
+    this.floatingTexts.push({x:e.x,y:e.y-.5,text:actualDmg+(blm>1?' ⚔':''),color:blm>1?'#ffaa00':'#ff4400',life:1,vy:-40});
     // Lifesteal
     if(p.lifesteal>0){
       const heal=Math.floor(actualDmg*p.lifesteal/100);
@@ -930,7 +944,18 @@ class Game {
       p.xp+=e.xp;
       this.audio.play('kill');
       this.logMsg(`Defeated ${e.name} (+${e.xp} XP)`,'#44ff44');
+      // Feature 014: gib burst (chunky body-parts) scaled by size/boss
+      const gibCount=e.boss?42:(10+e.size|0);
+      this.particles.emit(e.x*32+16,e.y*32+16,gibCount,{colors:['#7a0a0a','#4a0606','#1a1a1a','#5a0a0a'],speed:140+Math.random()*80,life:1+Math.random()*.5,size:2+Math.random()*3,type:'gib'});
       this.particles.emit(e.x*32+16,e.y*32+16,20,{colors:['#ff4400','#ff8800','#ffcc00','#ffffff'],speed:120,life:.8,size:3,type:'spark'});
+      // Feature 014: bigger death shake for bigger foes
+      this.shakeTimer=Math.max(this.shakeTimer,.25);
+      this.shakeIntensity=Math.max(this.shakeIntensity,2+e.size*0.3);
+      // Feature 014: carnage / bloodlust streak
+      this.carnage.kills++;
+      this.carnage.streak++;
+      this.carnage.streakTimer=4;
+      this.updateUI(); // refresh carnage/bloodlust HUD
       // Drop loot
       const drops=e.drops||[];
       if(drops.length&&Math.random()<.4+e.xp/200){
@@ -1323,6 +1348,11 @@ class Game {
     if(kia)kia.textContent='KIA: '+this.kiaCount;
     const holdBtn=document.getElementById('holdBtn');
     if(holdBtn)holdBtn.className=this.squadHold?'active':'';
+    // Feature 014: carnage + bloodlust HUD
+    const carn=document.getElementById('carnageText');
+    if(carn)carn.textContent='Kills: '+this.carnage.kills;
+    const bl=document.getElementById('bloodlustText');
+    if(bl)bl.textContent=this.carnage.streak>1?('BLOODLUST x'+this.carnage.streak):'';
   }
   toggleEquipPanel(){
     const panel=document.getElementById('equipPanel');
