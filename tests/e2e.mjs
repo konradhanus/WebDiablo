@@ -54,6 +54,30 @@ try {
   check('zero uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
   check('zero console errors', consoleErrors.length === 0, consoleErrors.join(' | '));
 
+  // --- Feature 011: Landing Page ---
+  const landing = await page.evaluate(() => {
+    const l = document.getElementById('landingScreen');
+    const play = document.getElementById('playBtn');
+    return { present: !!l, visible: l && l.style.display !== 'none', playPresent: !!play,
+             creator: (document.getElementById('landingCreator2')||{}).textContent,
+             created: (document.getElementById('landingCreated')||{}).textContent };
+  });
+  check('landing screen present', landing.present);
+  check('landing visible on load', landing.visible);
+  check('PLAY button present', landing.playPresent);
+  check('landing credits creator', landing.creator === 'Konrad Hanus', landing.creator);
+  check('landing credits creation date', /July 2026/.test(landing.created||''), landing.created);
+  // PLAY enters playing and hides landing
+  await page.evaluate(() => document.getElementById('playBtn').click());
+  await page.waitForTimeout(400);
+  const afterPlay = await page.evaluate(() => ({
+    state: window.game.state,
+    landingHidden: document.getElementById('landingScreen').style.display === 'none'
+  }));
+  check('PLAY enters playing state', afterPlay.state === 'playing', 'state=' + afterPlay.state);
+  check('PLAY hides landing screen', afterPlay.landingHidden);
+  check('no errors after PLAY', consoleErrors.length === 0 && pageErrors.length === 0);
+
   const gameExists = await page.evaluate(() => typeof window.game === 'object' && window.game !== null);
   check('game object initialized', gameExists);
 
@@ -123,6 +147,42 @@ try {
   await page.waitForTimeout(300);
   const retained = await page.evaluate(() => window.__TEST__.settings.getSettings().master);
   check('settings retained after reload', retained === 25, 'master=' + retained);
+  // --- Feature 003: XP Bar ---
+  // --- Feature 003: XP Bar ---
+  await page.evaluate(() => { if(window.game.state!=='playing')window.game.start(); window.game.player.xp = 50; window.game.player.xpNext = 100; window.game.updateUI(); });
+  const xp = await page.evaluate(() => ({
+    pct: parseFloat(document.getElementById('xpBar').style.width),
+    txt: document.getElementById('xpText').textContent,
+    prog: window.game.getProgress()
+  }));
+  check('XP bar fills ~50% at half xp', xp.pct > 45 && xp.pct < 55, 'width=' + xp.pct + '%');
+  check('XP text shows xp/xpNext', xp.txt === '50/100', xp.txt);
+  check('getProgress returns pct 50', Math.abs(xp.prog.pct - 50) < 1, 'pct=' + xp.prog.pct);
+  check('no errors after xp update', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 011: mouse-click kill awards XP (bug fix verification) ---
+  const killResult = await page.evaluate(() => {
+    if (window.game.state !== 'playing') window.game.start();
+    const g = window.game;
+    // Place a weak enemy directly to the right of the player.
+    const p = g.player;
+    p.x = 5; p.y = 5; p.dir = 1; // dir 1 = right
+    g.enemies = [{ name:'TestDummy', hp:1, maxHp:1, def:0, dmg:0, color:'#888', size:14,
+                   xp:42, icon:'💀', x:6, y:5, state:'idle', stateTimer:0, aggroRange:0,
+                   attackRange:1, attackCooldown:0, hitFlash:0, deathTimer:0, dead:false,
+                   drops:['common'] }];
+    const xpBefore = p.xp;
+    // Simulate holding left mouse (the single, correct attack path).
+    g.mouse.down = true;
+    g.update(0.1);
+    g.mouse.down = false;
+    const dummy = g.enemies[0];
+    return { xpBefore, xpAfter: p.xp, dummyDead: !dummy || dummy.dead };
+  });
+  check('mouse-click kill awards XP', killResult.xpAfter > killResult.xpBefore,
+        `xp ${killResult.xpBefore} -> ${killResult.xpAfter}`);
+  check('mouse-click kill marks enemy dead', killResult.dummyDead);
+  check('no errors after click-kill', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message);
 } finally {

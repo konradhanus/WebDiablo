@@ -58,6 +58,18 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 #tooltip .item-type{color:#888;font-style:italic;margin-bottom:6px}
 #tooltip .item-stats{color:#aaa;margin-bottom:4px}
 #tooltip .item-desc{color:#777;font-size:11px;margin-top:6px;border-top:1px solid #333;padding-top:6px}
+#landingScreen{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at center,#1a0500 0%,#000 75%);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:400;overflow:auto;font-family:'Courier New',monospace}
+#landingScreen .frame{border:2px solid #5a3a1a;border-radius:10px;background:linear-gradient(180deg,rgba(20,10,5,.92),rgba(10,5,2,.96));box-shadow:0 0 40px rgba(255,80,0,.25),inset 0 0 30px rgba(0,0,0,.8);padding:38px 54px;max-width:680px;text-align:center}
+#landingScreen h1{font-size:46px;color:#cc2200;text-shadow:0 0 18px #ff0000,0 0 36px #880000;letter-spacing:6px;margin-bottom:6px;font-family:'Courier New',monospace}
+#landingScreen .tag{color:#a07a4a;font-size:16px;font-style:italic;margin-bottom:22px;letter-spacing:1px}
+#landingScreen .features{text-align:left;display:inline-block;margin:0 auto 26px;color:#c8b89a;font-size:13px;line-height:1.9}
+#landingScreen .features li{list-style:none;margin:2px 0}
+#landingScreen .features li:before{content:'◆ ';color:#ff8800}
+#landingScreen .play-btn{padding:16px 60px;font-size:22px;font-family:'Courier New',monospace;font-weight:bold;letter-spacing:3px;background:linear-gradient(180deg,#5a2a0a,#2a0a00);color:#ffd700;border:2px solid #ff8800;border-radius:8px;cursor:pointer;text-shadow:0 0 8px #ff4400;transition:all .2s}
+#landingScreen .play-btn:hover{background:linear-gradient(180deg,#7a3a1a,#3a1a0a);box-shadow:0 0 28px rgba(255,120,0,.7);transform:scale(1.04)}
+#landingScreen .credit{margin-top:24px;color:#6a5436;font-size:12px;letter-spacing:1px}
+#landingScreen .credit b{color:#a07a4a}
+#landingScreen .hint{margin-top:14px;color:#4a3a26;font-size:11px}
 #deathScreen{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(80,0,0,.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:200}
 #deathScreen h1{color:#ff2200;font-size:64px;text-shadow:0 0 30px #ff0000,0 0 60px #880000;margin-bottom:20px}
 #deathScreen p{color:#cc8866;font-size:18px;margin-bottom:30px}
@@ -169,7 +181,24 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
     <label>Mute <input type="checkbox" id="setMute"></label><br><br>
     <button onclick="game.toggleSettings()" style="background:#3a5a2a;color:#fff;padding:6px 14px;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer">Close</button>
   </div>
-  <div id="startScreen"><h1>SHADOWS OF THE FORGOTTEN</h1><h2>A Dark Fantasy Dungeon Crawler</h2><button onclick="game.start()">ENTER THE DEPTHS</button><button id="continueBtn" onclick="game.continue()" style="display:none;margin-top:10px;background:#3a5a2a">CONTINUE</button><div class="controls">WASD/Arrows — Move<br>Mouse Left — Attack<br>Right-click / F — Fireball<br>E — Pick up items / Toggle Equipment<br>Tab — Toggle Stats<br>I — Inventory<br>1-5 — Use potions<br>ESC — Menu</div></div>
+  <div id="landingScreen">
+    <div class="frame">
+      <h1>SHADOWS OF THE FORGOTTEN</h1>
+      <div class="tag">A Dark-Fantasy Dungeon Crawler — by <span id="landingCreator"></span></div>
+      <ul class="features">
+        <li>Descend through 10 haunted floors of the forgotten depths</li>
+        <li>Diablo-style loot: common → mythic gear with deep stats</li>
+        <li>Cannon-Fodder carnage: slaughter endless hated hordes</li>
+        <li>Spellfire, crits, combos, bosses &amp; a branching skill tree</li>
+        <li>Auto-save, achievements, squad command &amp; blood-soaked glory</li>
+      </ul>
+      <br>
+      <button class="play-btn" id="playBtn">▶ PLAY</button>
+      <div class="credit">Created by <b id="landingCreator2"></b> &middot; <span id="landingCreated"></span></div>
+      <div class="hint">WASD move &middot; Mouse attack &middot; Right-click / F fireball &middot; I inventory &middot; E equip</div>
+    </div>
+  </div>
+  <div id="startScreen" style="display:none"><h1>SHADOWS OF THE FORGOTTEN</h1><h2>A Dark Fantasy Dungeon Crawler</h2><button onclick="game.start()">ENTER THE DEPTHS</button><button id="continueBtn" onclick="game.continue()" style="display:none;margin-top:10px;background:#3a5a2a">CONTINUE</button><div class="controls">WASD/Arrows — Move<br>Mouse Left — Attack<br>Right-click / F — Fireball<br>E — Pick up items / Toggle Equipment<br>Tab — Toggle Stats<br>I — Inventory<br>1-5 — Use potions<br>ESC — Menu</div></div>
   <div id="levelUp">LEVEL UP!</div>
   <div id="statsPanel"><h3>Character Stats</h3><div class="stat"><span>Strength:</span><span class="stat-val" id="statStr">10</span></div><div class="stat"><span>Dexterity:</span><span class="stat-val" id="statDex">10</span></div><div class="stat"><span>Intelligence:</span><span class="stat-val" id="statInt">10</span></div><div class="stat"><span>Attack Damage:</span><span class="stat-val" id="statDmg">15-25</span></div><div class="stat"><span>Defense:</span><span class="stat-val" id="statDef">5</span></div><div class="stat"><span>Attack Speed:</span><span class="stat-val" id="statAtkSpd">1.0</span></div></div>
   <div id="floorDisplay">Floor 1 — The Crypt of Souls</div>
@@ -178,7 +207,10 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.2.0';
+const GAME_VERSION = '1.3.0';
+// ==================== CREDITS (landing page) ====================
+const CREATOR = 'Konrad Hanus';
+const CREATED = 'July 2026';
 // ==================== SAVE MANAGER (Feature 001) ====================
 const SAVE_KEY = 'webdiablo_save_v1';
 const SAVE_FORMAT = 1;
@@ -202,7 +234,8 @@ function loadGame(){
 function hasSave(){return loadGame()!==null;}
 function clearSave(){try{localStorage.removeItem(SAVE_KEY);}catch(e){}}
 // Test hooks (used by unit + e2e; harmless in production)
-window.__TEST__={saveGame,loadGame,hasSave,clearSave,SAVE_KEY,SAVE_FORMAT};
+window.__TEST__={saveGame,loadGame,hasSave,clearSave,SAVE_KEY,SAVE_FORMAT,
+  getProgress:()=>(typeof game!=='undefined'&&game)?game.getProgress():null};
 // ==================== SETTINGS MANAGER (Feature 002) ====================
 const SETTINGS_KEY='webdiablo_settings_v1';
 const SETTINGS_DEFAULTS={master:80,music:80,sfx:80,muted:false};
@@ -607,6 +640,11 @@ class Game {
     this.lastTime=performance.now();
     this.logMsg&&this.logMsg('Welcome back, wanderer...','#ffd700');
   }
+  getProgress(){
+    const p=this.player||{xp:0,xpNext:1,level:1};
+    const pct=Math.max(0,Math.min(100,p.xp/p.xpNext*100));
+    return {level:p.level,xp:Math.floor(p.xp),xpNext:p.xpNext,pct};
+  }
   toggleSettings(){
     const p=document.getElementById('settingsPanel');
     if(!p)return;
@@ -850,8 +888,9 @@ class Game {
       this.logMsg(`Defeated ${e.name} (+${e.xp} XP)`,'#44ff44');
       this.particles.emit(e.x*32+16,e.y*32+16,20,{colors:['#ff4400','#ff8800','#ffcc00','#ffffff'],speed:120,life:.8,size:3,type:'spark'});
       // Drop loot
-      if(Math.random()<.4+e.xp/200){
-        const dropType=e.drops[Math.floor(Math.random()*e.drops.length)];
+      const drops=e.drops||[];
+      if(drops.length&&Math.random()<.4+e.xp/200){
+        const dropType=drops[Math.floor(Math.random()*drops.length)];
         const rarity=RARITIES.find(r=>r.name===dropType)||RARITIES[0];
         const item=generateItem(this.floor);
         item.rarity=rarity.name;
@@ -1529,6 +1568,20 @@ class Game {
 const game=new Game();
 window.game=game; // expose for E2E tests / debugging
 
+// ==================== LANDING PAGE (Feature 011) ====================
+(function(){
+  const set=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+  set('landingCreator',CREATOR);
+  set('landingCreator2',CREATOR);
+  set('landingCreated',CREATED);
+  const play=document.getElementById('playBtn');
+  if(play)play.addEventListener('click',()=>{
+    const ls=document.getElementById('landingScreen');
+    if(ls)ls.style.display='none';
+    game.start();
+  });
+})();
+
 // Feature 001: show CONTINUE if a save exists, and autosave while playing
 (function(){
   const cb=document.getElementById('continueBtn');
@@ -1568,48 +1621,9 @@ document.addEventListener('keyup',e=>{game.keys[e.code]=false});
 canvas.addEventListener('mousemove',e=>{game.mouse.x=e.clientX;game.mouse.y=e.clientY});
 canvas.addEventListener('mousedown',e=>{
   if(e.button===0)game.mouse.down=true;
-  // Left click = melee attack
-  if(e.button===0&&game.state==='playing'){
-    const p=game.player;
-    const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
-    const dir=dirs[p.dir];
-    const attackX=p.x+dir.x*1.5;
-    const attackY=p.y+dir.y*1.5;
-    // Check enemies in range
-    for(const e of game.enemies){
-      if(e.dead)continue;
-      const dx=e.x-attackX,dy=e.y-attackY;
-      if(Math.sqrt(dx*dx+dy*dy)<1.5){
-        const dmg=game.getDamageRandom();
-        const crit=Math.random()*100<p.critChance;
-        const finalDmg=crit?Math.floor(dmg*2):dmg;
-        e.hp-=finalDmg;
-        e.hitFlash=0.2;
-        e.attackCooldown=0.5;
-        game.audio.play('hit');
-        game.particles.emit(e.x*32+16,e.y*32+16,8,{colors:['#ff4400','#ffaa00'],speed:80,life:.4,size:3,type:'circle'});
-        game.floatingTexts.push({x:e.x,y:e.y-.5,text:finalDmg,color:crit?'#ffff00':'#ff4400',life:1.2,vy:-35});
-        if(crit){game.floatingTexts.push({x:e.x,y:e.y-.8,text:'CRIT!',color:'#ffff00',life:.8,vy:-20})}
-        if(e.hp<=0){
-          e.dead=true;
-          game.audio.play('death');
-          game.particles.emit(e.x*32+16,e.y*32+16,20,{colors:[e.color,'#888','#aaa'],speed:100,life:.8,size:4,type:'circle'});
-          game.xpGain+=e.xp;
-          game.logMsg(`Killed ${e.name} (+${e.xp} XP)`,'#ffff44');
-          // Loot drop
-          if(Math.random()<.4){
-            game.loot.push({x:e.x,y:e.y,item:generateItem(game.floor),life:60});
-          }
-        }
-        // Lifesteal
-        if(p.lifesteal>0){
-          const heal=Math.floor(finalDmg*p.lifesteal/100);
-          if(heal>0){p.hp=Math.min(p.maxHp,p.hp+heal)}
-        }
-        break;
-      }
-    }
-  }
+  // Left click = melee attack. Damage + XP routing is handled centrally in
+  // Game.update() -> meleeAttack() -> hitEnemy(), which awards XP to p.xp.
+  // (No duplicate kill path here — fixes the git-audit XP bug.)
 });
 canvas.addEventListener('mouseup',e=>{if(e.button===0)game.mouse.down=false});
 canvas.addEventListener('contextmenu',e=>{
