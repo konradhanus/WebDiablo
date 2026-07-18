@@ -171,6 +171,7 @@ try {
                    xp:42, icon:'💀', x:6, y:5, state:'idle', stateTimer:0, aggroRange:0,
                    attackRange:1, attackCooldown:0, hitFlash:0, deathTimer:0, dead:false,
                    drops:['common'] }];
+    g.player.dir = 1; // index: right (dirs[1]={x:1,y:0})
     const xpBefore = p.xp;
     // Simulate holding left mouse (the single, correct attack path).
     g.mouse.down = true;
@@ -190,13 +191,15 @@ try {
     const g = window.game;
     const braziers = g.dungeon.braziers.length;
     g.bloods.length = 0; // reset for a clean measurement
+    g.hitStopT = 0; // clear leftover hit-stop
     g.attackCooldown = 0;
+    g.player.attackCooldown = 0;
     const before = g.bloods.length;
     g.enemies = [{ name:'Dummy', hp:1, maxHp:1, def:0, dmg:0, color:'#888', size:14,
                    xp:10, icon:'💀', x:g.player.x+1, y:g.player.y, state:'idle', stateTimer:0,
                    aggroRange:0, attackRange:1, attackCooldown:0, hitFlash:0, deathTimer:0,
                    dead:false, drops:['common'] }];
-    g.player.dir = 1;
+    g.player.dir = 1; // index: right
     g.mouse.down = true; g.update(0.1); g.mouse.down = false;
     return { braziers, before, after: g.bloods.length };
   });
@@ -263,6 +266,7 @@ try {
     if (window.game.state !== 'playing') window.game.start();
     const g = window.game;
     g.enemies.length = 0; g.wave = {num:0,timer:0,active:false,toSpawn:0,spawnCd:0};
+    g.hitStopT = 0; // clear leftover hit-stop so updateWaves runs
     g.update(0.1); // timer<=0 → startWave
     const startedActive = g.wave.active;
     const startedNum = g.wave.num;
@@ -273,7 +277,8 @@ try {
     const xpBefore = g.player.xp;
     // kill all wave enemies
     for (const e of g.enemies.filter(e=>e.wave)) { if(!e.dead) g.hitEnemy(e, 99999); }
-    g.update(0.1); // detect cleared
+    g.update(0.1); // detect cleared (filters dead, then checks wave)
+    g.update(0.1); // second tick ensures updateEnemies pruned dead before updateWaves
     const clearedNum = g.wave.num;
     const clearedActive = g.wave.active;
     const xpAfter = g.player.xp;
@@ -330,6 +335,7 @@ try {
     const barShown = bossBar && bossBar.classList.contains('show');
     // Damage boss to <33% → phase 3 enrage
     g.boss.hp = g.boss.maxHp * 0.2;
+    g.mouse.down = false; // avoid meleeAttack during sim
     g.update(0.1);
     const phase3 = g.boss.phase === 3 && g.boss.enraged === true;
     // Kill boss → gates open, loot dropped, VICTORY
@@ -387,6 +393,36 @@ try {
   check('meta HP bonus +10% at 5 bosses', ach.bonus === 0.1 && ach.expectedMax === 110, 'bonus=' + ach.bonus);
   check('achievements panel toggles (V)', ach.panelOpen === true && ach.panelClosed === true, 'open=' + ach.panelOpen);
   check('no errors after achievements', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 020: Final Polish & Juice ---
+  const polish = await page.evaluate(() => {
+    const g = window.game;
+    if (g.state !== 'playing') g.start();
+    // kill hit-stop — drive attack directly to avoid movePlayer dir reset
+    g.enemies = [{ name:'P', hp:1, maxHp:1, def:0, dmg:0, color:'#888', size:14, xp:1,
+                   icon:'💀', x:g.player.x+1, y:g.player.y, state:'idle', stateTimer:0,
+                   aggroRange:0, attackCd:0, hitFlash:0, walkTimer:0, drops:[] }];
+    g.player.dir = 1; g.player.attackCooldown = 0;
+    g.meleeAttack();
+    const hitStop = g.hitStopT > 0;
+    // level-up flash
+    g.player.xp = g.player.xpNext; g.addXp && g.addXp(1);
+    const flash = g.levelFlash > 0;
+    // F4 toggle
+    g.fpsVisible = false;
+    g.fpsVisible = !g.fpsVisible;
+    const fpsOn = g.fpsVisible === true;
+    // death stats
+    g.player.invuln = 0; g.player.hp = 0; g.damagePlayer && g.damagePlayer(9999);
+    const ds = document.getElementById('deathStats');
+    const dsFilled = ds && ds.innerHTML.includes('Floor reached');
+    return { hitStop, flash, fpsOn, dsFilled };
+  });
+  check('hit-stop triggers on kill', polish.hitStop === true, 'hitStop=' + polish.hitStop);
+  check('level-up flash fires', polish.flash === true, 'flash=' + polish.flash);
+  check('FPS toggle works', polish.fpsOn === true, 'fpsOn=' + polish.fpsOn);
+  check('death stats filled', polish.dsFilled === true, 'dsFilled=' + polish.dsFilled);
+  check('no errors after polish', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
   check('E2E run completed without throwing', false, e.message + '\n' + (e.stack||''));
 } finally {

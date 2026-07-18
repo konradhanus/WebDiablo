@@ -118,6 +118,10 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 .ach-desc{font-size:12px;color:#ccaa66}
 .ach-meta{margin-top:14px;font-size:13px;color:#aa8844;border-top:1px solid #3a2a1a;padding-top:10px}
 #achPanel button{margin-top:14px;width:100%;padding:8px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer}
+/* ===== Feature 020: FPS + death stats ===== */
+#fpsCounter{position:fixed;top:10px;right:180px;z-index:40;font-family:monospace;font-size:12px;color:#88ff88;background:rgba(0,0,0,.5);padding:2px 6px;border-radius:4px;text-shadow:1px 1px 2px #000}
+#deathStats{margin:10px 0;font-family:Georgia,serif;color:#ccaa88;font-size:14px;line-height:1.8}
+#deathStats .ds-row b{color:#ffd700}
 /* ===== Feature 017: Boss HP bar ===== */
 #bossBar{position:absolute;top:96px;left:50%;transform:translateX(-50%);z-index:30;width:min(560px,70vw);text-align:center;font-family:Georgia,serif;color:#ff8866;display:none}
 #bossBar.show{display:block}
@@ -258,7 +262,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
     </div>
     <button onclick="game.toggleEquipPanel()" style="margin-top:12px;width:100%;padding:6px;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer">Close</button>
   </div>
-  <div id="deathScreen"><h1>YOU DIED</h1><p>Your body lies among the fallen...</p><button onclick="game.respawn()">Rise Again</button></div>
+  <div id="deathScreen"><h1>YOU DIED</h1><p>Your body lies among the fallen...</p><div id="deathStats"></div><button onclick="game.respawn()">Rise Again</button><button onclick="location.href='index.html'">Main Menu</button></div>
   <div id="achPanel" style="display:none"></div>
   <div id="settingsPanel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(15,8,5,.95);border:2px solid #5a3a1a;border-radius:8px;padding:20px;z-index:200;min-width:280px;color:#e8d8b0;font-family:monospace">
     <h2 style="color:#ffd700;margin-top:0">Settings</h2>
@@ -295,6 +299,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
   <div id="waveBar"><span id="waveText">WAVE 0 · next 25s</span></div>
   <div id="waveBanner"></div>
   <div id="bossBar" style="display:none"><span id="bossName"></span><div class="boss-hp-track"><div class="boss-hp-fill" id="bossHpFill"></div></div></div>
+  <div id="fpsCounter" style="display:none">-- FPS</div>
   <div id="squadBtns">
     <button id="recruitBtn" title="Recruit mercenary (Q)">+ Squad (Q)</button>
     <button id="holdBtn" title="Toggle hold position (R)">Hold (R)</button>
@@ -304,7 +309,7 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.11.0';
+const GAME_VERSION = '2.0.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -874,6 +879,10 @@ class Game {
     this.achievements=loadAchievements(); // Feature 019
     this.meta=loadMeta(); // Feature 019: {bosses,deepest}
     this.floorDamageTaken=0; // Feature 019: untouched tracking
+    this.hitStopT=0; // Feature 020: hit-stop timer
+    this.camX=0;this.camY=0; // Feature 020: smoothed camera
+    this.levelFlash=0; // Feature 020: level-up flash
+    this.fps=0;this.fpsVisible=false;this._fpsAcc=0;this._fpsFrames=0; // Feature 020
     this.time=0;
   }
   start(){
@@ -1081,7 +1090,16 @@ class Game {
     this.shakeTimer=0.12;this.shakeIntensity=4;
     this.floatingTexts.push({x:p.x,y:p.y-.5,text:dmg,color:'#ff2200',life:1,vy:-40});
     this.floorDamageTaken+=dmg; // Feature 019
-    if(p.hp<=0){p.hp=0;this.audio.play('death');this.audio.stopDrone();document.getElementById('deathScreen').style.display='flex';this.state='dead';}
+    if(p.hp<=0){p.hp=0;this.audio.play('death');this.audio.stopDrone();this.state='dead';
+      // Feature 020: fill game-over stats
+      const got=Object.keys(this.achievements).filter(k=>this.achievements[k]).length;
+      const ds=document.getElementById('deathStats');
+      if(ds)ds.innerHTML='<div class="ds-row">Floor reached: <b>'+this.floor+'</b></div>'+
+        '<div class="ds-row">Kills: <b>'+(this.carnage.kills||0)+'</b></div>'+
+        '<div class="ds-row">Bosses slain: <b>'+(this.meta.bosses||0)+'</b></div>'+
+        '<div class="ds-row">Achievements: <b>'+got+'/'+(typeof ACHIEVEMENTS!=='undefined'?ACHIEVEMENTS.length:0)+'</b></div>';
+      document.getElementById('deathScreen').style.display='flex';
+    }
   }
   // ==================== ACHIEVEMENTS (Feature 019) ====================
   unlock(id){
@@ -1132,6 +1150,9 @@ class Game {
   }
   update(dt){
     if(this.state!=='playing')return;
+    this.lastDt=dt; // Feature 020: expose dt for render (fps calc)
+    // Feature 020: hit-stop — freeze simulation briefly for impact weight
+    if(this.hitStopT>0){this.hitStopT-=dt;this.render();return;}
     this.time+=dt;
     this.updatePlayer(dt);
     this.updateSquad(dt); // Feature 013
@@ -1152,6 +1173,7 @@ class Game {
     // Feature 014: bloodlust streak decay
     if(this.carnage.streakTimer>0){this.carnage.streakTimer-=dt;if(this.carnage.streakTimer<=0)this.carnage.streak=0;}
     if(this.fireballCd>0)this.fireballCd-=dt; // Feature 016: fireball cooldown
+    if(this.levelFlash>0)this.levelFlash-=dt; // Feature 020: level-up flash decay
     if(this.shakeTimer>0)this.shakeTimer-=dt;
   }
   updatePlayer(dt){
@@ -1450,6 +1472,7 @@ class Game {
     }
     if(e.hp<=0){
       e.dead=true;e.deathTimer=1;
+      this.hitStopT=Math.max(this.hitStopT,0.05); // Feature 020: kill hit-stop
       this.audio.play('scream'); // Feature 018: enemy death wail
       // Feature 012: blood decal where the enemy falls (capped for perf)
       this.bloods.push({x:e.x,y:e.y,r:6+Math.random()*7,age:0});
@@ -1516,6 +1539,10 @@ class Game {
         p.hp=p.maxHp;p.mp=p.maxMp;
         p.str+=2;p.dex+=2;p.int+=2;
         this.audio.play('levelup');
+        this.levelFlash=0.35; // Feature 020: level-up screen flash
+        // Feature 020: particle ring burst on level up
+        this.particles.emit(p.x*32+16,p.y*32+16,28,{colors:['#ffd700','#ffaa00','#fff7c0'],speed:180,life:.9,size:3,type:'spark'});
+        this.particles.emit(p.x*32+16,p.y*32+16,16,{colors:['#ffd700','#ffaa00','#fff7c0'],speed:90,life:1.1,size:4,type:'spark'});
         document.getElementById('levelUp').style.display='block';
         setTimeout(()=>document.getElementById('levelUp').style.display='none',2000);
         saveGame(this);
@@ -2047,8 +2074,12 @@ class Game {
     this.updateSkillBar(); // Feature 016: per-frame cooldown sweep
     this.updateBossBar(); // Feature 017: per-frame boss HP
     ctx.fillStyle='#0a0505';ctx.fillRect(0,0,canvas.width,canvas.height);
-    const camX=this.camera.x+Math.sin(this.time*3)*this.shakeIntensity;
-    const camY=this.camera.y+Math.cos(this.time*3)*this.shakeIntensity;
+    // Feature 020: smoothed camera follow (lerp toward target)
+    const ctX=this.camera.x,ctY=this.camera.y;
+    this.camX+=(ctX-this.camX)*0.12;
+    this.camY+=(ctY-this.camY)*0.12;
+    const camX=this.camX+Math.sin(this.time*3)*this.shakeIntensity;
+    const camY=this.camY+Math.cos(this.time*3)*this.shakeIntensity;
     const p=this.player;
     // Calculate visible tile range
     const startTX=Math.max(0,Math.floor(camX/32)-1);
@@ -2319,6 +2350,16 @@ class Game {
     const vig=ctx.createRadialGradient(canvas.width/2,canvas.height/2,canvas.width*.3,canvas.width/2,canvas.height/2,canvas.width*.7);
     vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,.5)');
     ctx.fillStyle=vig;ctx.fillRect(0,0,canvas.width,canvas.height);
+    // Feature 020: level-up flash overlay
+    if(this.levelFlash>0){
+      ctx.fillStyle='rgba(255,240,180,'+(this.levelFlash*0.5)+')';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+    }
+    // Feature 020: FPS counter (rolling avg, toggle F4)
+    this._fpsFrames++;this._fpsAcc+=this.lastDt;
+    if(this._fpsAcc>=0.5){this.fps=Math.round(this._fpsFrames/this._fpsAcc);this._fpsFrames=0;this._fpsAcc=0;
+      const fc=document.getElementById('fpsCounter');if(fc)fc.textContent=this.fps+' FPS';}
+    if(this.fpsVisible){const fc=document.getElementById('fpsCounter');if(fc)fc.style.display='block';}else{const fc=document.getElementById('fpsCounter');if(fc)fc.style.display='none';}
     // Render minimap
     this.renderMinimap();
   }
@@ -2409,6 +2450,7 @@ document.addEventListener('keydown',e=>{
   if(e.code==='KeyQ')game.recruitMerc();
   if(e.code==='KeyR'){game.squadHold=!game.squadHold;game.updateUI();game.logMsg(game.squadHold?'Squad holding position':'Squad following','#ffd700');}
   if(e.code==='KeyV')game.toggleAchPanel(); // Feature 019
+  if(e.code==='KeyF4'){game.fpsVisible=!game.fpsVisible;game.logMsg(game.fpsVisible?'FPS on':'FPS off','#88ccff');} // Feature 020
 });
 // Feature 002: settings sliders
 ['setMaster','setMusic','setSfx'].forEach(id=>{
