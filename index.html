@@ -122,7 +122,7 @@
 <script type="module">
 import * as THREE from './vendor/three.module.js';
 
-const GAME_VERSION = '3.0.0';
+const GAME_VERSION = '3.1.0';
 
 // ====================== CONFIG ======================
 const TILE = 2.0;                 // world units per tile
@@ -289,6 +289,91 @@ function buildHumanoid(opt={}){
   return g;
 }
 
+// ====================== CREATURES (monsters) ======================
+const ENEMY_DEFS = {
+  skeleton: { name:'Skeleton', hp:34, dmg:9, speed:3.0, color:0xe8e4d8, accent:0x9a9488, size:1.0, kind:'melee', ranged:false, scale:0.95, xp:14 },
+  goblin:   { name:'Goblin',  hp:26, dmg:7, speed:4.2, color:0x6aa84f, accent:0x4a7a33, size:0.85,kind:'melee', ranged:false, scale:0.85, xp:10 },
+  zombie:   { name:'Zombie',  hp:58, dmg:12,speed:1.9, color:0x6b8e5a, accent:0x3e5234, size:1.15,kind:'melee', ranged:false, scale:1.1,  xp:18 },
+  demon:    { name:'Demon',   hp:80, dmg:18,speed:3.4, color:0xb03030, accent:0x3a1010, size:1.3, kind:'melee', ranged:true,  scale:1.2,  xp:34 },
+  wraith:   { name:'Wraith',  hp:44, dmg:14,speed:3.6, color:0x9b6bd6, accent:0x5a3a8a, size:1.0, kind:'ranged',ranged:true,  scale:1.0,  xp:26, float:true },
+  brute:    { name:'Cave Brute',hp:120,dmg:24,speed:2.4,color:0x8a6a4a, accent:0x4a3424, size:1.5, kind:'melee', ranged:false, scale:1.4,  xp:48 },
+};
+function buildCreature(type){
+  const d=ENEMY_DEFS[type]||ENEMY_DEFS.skeleton;
+  const g=new THREE.Group();
+  const body=mat(d.color,{roughness:.85});
+  const acc=mat(d.accent,{roughness:.7});
+  const bone=mat(0xeae6d8,{roughness:.6});
+  const dark=mat(0x1a1410,{roughness:.9});
+  const eye=mat(0xff3322,{emissive:0xff2200,emissiveIntensity:1.4});
+  const s=d.size;
+  // legs
+  const legL=box(0.26*s,0.6*s,0.3*s,body); legL.position.set(-0.16*s,-0.5*s,0); g.add(legL);
+  const legR=box(0.26*s,0.6*s,0.3*s,body); legR.position.set(0.16*s,-0.5*s,0); g.add(legR);
+  // torso
+  const torso=box(0.55*s,0.7*s,0.38*s,body); torso.position.set(0,-0.02*s,0); g.add(torso);
+  // ribs/detail
+  const rib=box(0.5*s,0.4*s,0.12*s,acc); rib.position.set(0,0.05*s,0.22*s); g.add(rib);
+  // head
+  const head=box(0.34*s,0.34*s,0.34*s,body); head.position.set(0,0.55*s,0); g.add(head);
+  const eL=box(0.08*s,0.08*s,0.06*s,eye); eL.position.set(-0.1*s,0.58*s,0.18*s); g.add(eL);
+  const eR=box(0.08*s,0.08*s,0.06*s,eye); eR.position.set(0.1*s,0.58*s,0.18*s); g.add(eR);
+  // arms
+  const armL=new THREE.Group(); armL.position.set(-0.38*s,0.2*s,0); const ula=box(0.16*s,0.45*s,0.18*s,body); ula.position.y=-0.22*s; armL.add(ula); g.add(armL);
+  const armR=new THREE.Group(); armR.position.set(0.38*s,0.2*s,0); const ura=box(0.16*s,0.45*s,0.18*s,body); ura.position.y=-0.22*s; armR.add(ura); g.add(armR);
+  // weapon by kind
+  if(type==='skeleton'){ const sw=box(0.1*s,0.9*s,0.1*s,bone); sw.position.y=-0.5*s; armR.add(sw); }
+  else if(type==='goblin'){ const club=cyl(0.08*s,0.16*s,0.7*s,acc); club.position.y=-0.45*s; armR.add(club); }
+  else if(type==='demon'){
+    // horns
+    const hL=cyl(0.02*s,0.1*s,0.4*s,acc); hL.position.set(-0.16*s,0.78*s,0); hL.rotation.z=0.5; g.add(hL);
+    const hR=cyl(0.02*s,0.1*s,0.4*s,acc); hR.position.set(0.16*s,0.78*s,0); hR.rotation.z=-0.5; g.add(hR);
+    // wings
+    const wL=box(0.06*s,0.7*s,0.5*s,dark); wL.position.set(-0.5*s,0.2*s,-0.2*s); wL.rotation.y=0.6; g.add(wL);
+    const wR=box(0.06*s,0.7*s,0.5*s,dark); wR.position.set(0.5*s,0.2*s,-0.2*s); wR.rotation.y=-0.6; g.add(wR);
+    g.userData.wings=[wL,wR];
+    // claw
+    const claw=box(0.14*s,0.5*s,0.14*s,dark); claw.position.y=-0.5*s; armR.add(claw);
+  } else if(type==='brute'){
+    const fL=box(0.2*s,0.4*s,0.2*s,acc); fL.position.set(-0.35*s,-0.55*s,0.1*s); g.add(fL);
+    const fR=box(0.2*s,0.4*s,0.2*s,acc); fR.position.set(0.35*s,-0.55*s,0.1*s); g.add(fR);
+  } else if(type==='wraith'){
+    g.traverse(o=>{ if(o.isMesh)o.material.transparent=true,o.material.opacity=0.62; });
+    const cloak=box(0.6*s,0.9*s,0.5*s,d.color?mat(d.color,{transparent:true,opacity:.5,emissive:d.accent,emissiveIntensity:.4}):body); cloak.position.y=-0.1*s; g.add(cloak);
+  } else { const fists=box(0.18*s,0.3*s,0.18*s,acc); fists.position.y=-0.5*s; armR.add(fists); }
+  if(d.float){ g.position.y=0.0; }
+  g.traverse(o=>{ if(o.isMesh){o.castShadow=true;o.receiveShadow=true;} });
+  g.userData={legL,legR,armL,armR,torso,head,type,def:d};
+  return g;
+}
+
+class Enemy {
+  constructor(type,x,z,floor){
+    this.def=ENEMY_DEFS[type]||ENEMY_DEFS.skeleton; this.type=type;
+    this.x=x; this.z=z; this.vx=0; this.vz=0; this.dead=false;
+    const fscale=1+ (floor-1)*0.08;
+    this.maxHp=Math.round(this.def.hp*fscale*(1+(floor>5?0.1:0)));
+    this.hp=this.maxHp;
+    this.dmg=Math.round(this.def.dmg*fscale);
+    this.speed=this.def.speed*(0.9+Math.random()*0.3);
+    this.cd=Math.random()*1.5; this.atkRange=this.def.kind==='ranged'?9:1.8;
+    this.xp=this.def.xp;
+    this.mesh=buildCreature(type); this.mesh.position.set(x,0,z);
+    this.animT=Math.random()*6; this.hitFlash=0; this.strafe=Math.random()<.5?1:-1;
+    // hp bar (billboard sprite)
+    const c=document.createElement('canvas'); c.width=64; c.height=10; this._hpc=c;
+    const tex=new THREE.CanvasTexture(c); this._hptex=tex;
+    const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false,transparent:true}));
+    spr.scale.set(1.4,0.22,1); spr.position.y=1.5*this.def.size; this.mesh.add(spr); this.hpBar=spr;
+  }
+  updateBar(){
+    const c=this._hpc,ctx=c.getContext('2d'); ctx.clearRect(0,0,64,10);
+    ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(0,0,64,10);
+    const w=Math.max(0,Math.round(this.hp/this.maxHp*60)); ctx.fillStyle=this.hp/this.maxHp>0.4?'#5ad65a':'#d65a5a'; ctx.fillRect(2,2,w,6);
+    this._hptex.needsUpdate=true;
+  }
+}
+
 // ====================== GAME ======================
 class Game {
   constructor(){
@@ -370,7 +455,36 @@ class Game {
     }
     root.add(wallGroup);
   }
-  spawnEnemies(){ this.enemies.length=0; /* Phase 1: filled later */ }
+  spawnEnemies(){
+    this.enemies.length=0;
+    const f=this.floor;
+    const pool=['skeleton','goblin','zombie','demon','wraith','brute'];
+    const count=6+Math.floor(f*1.6)+Math.floor(Math.random()*3);
+    let placed=0, guard=0;
+    while(placed<count && guard<count*30){
+      guard++;
+      const r=this.dungeon.rooms[1+Math.floor(Math.random()*(this.dungeon.rooms.length-1))];
+      const tx=r.x+Math.floor(Math.random()*r.w), tz=r.y+Math.floor(Math.random()*r.h);
+      if(!this.dungeon.walkable(tx,tz)) continue;
+      const wx=tx*TILE, wz=tz*TILE;
+      if(Math.hypot(wx-this.player.x,wz-this.player.z)<6) continue; // not on player
+      // pick type by floor weighting
+      let type;
+      const roll=Math.random();
+      if(f<2) type=roll<.5?'goblin':(roll<.8?'skeleton':'zombie');
+      else if(f<5) type=roll<.3?'goblin':roll<.55?'skeleton':roll<.75?'zombie':roll<.9?'wraith':'demon';
+      else type=roll<.2?'goblin':roll<.4?'skeleton':roll<.6?'zombie':roll<.78?'wraith':roll<.92?'demon':'brute';
+      const e=new Enemy(type,wx,wz,f); e.updateBar(); scene.add(e.mesh); this.enemies.push(e); placed++;
+    }
+    // boss every 5 floors
+    if(f%5===0){
+      const r=this.dungeon.rooms[this.dungeon.rooms.length-1];
+      const b=new Enemy(Math.random()<.5?'demon':'brute', r.cx*TILE, r.cy*TILE, f+4);
+      b.isBoss=true; b.maxHp*=3.5; b.hp=b.maxHp; b.dmg=Math.round(b.dmg*1.6); b.def.scale=2.0;
+      b.mesh.scale.setScalar(2.0); b.xp*=6; b.updateBar(); scene.add(b.mesh); this.enemies.push(b);
+      this.toast('A '+b.def.name+' BOSS blocks your path!');
+    }
+  }
   // ---- input-driven aim from screen mouse to ground plane ----
   updateAim(){
     const ndc=new THREE.Vector2((this.mouse.x/window.innerWidth)*2-1, -(this.mouse.y/window.innerHeight)*2+1);
@@ -417,6 +531,12 @@ class Game {
     // attacks
     if(this.mouse.down && p.attackCd<=0){ this.melee(); p.attackCd=0.42/(1+p.dex*0.01); }
     if((this.mouse.rdown||this.keys['KeyF']) && p.castCd<=0 && p.mp>=12){ this.fireball(); p.castCd=0.5; p.mp-=12; }
+    // world systems
+    this.updateEnemies(dt);
+    this.updateProjectiles(dt);
+    this.updateParticles(dt);
+    this.updateLoot(dt);
+    this.pickupLoot();
     // stairs
     const tx=Math.round(p.x/TILE), tz=Math.round(p.z/TILE);
     if(this.dungeon.get(tx,tz)===T.STAIRS){ this.floor++; this.player.floor=this.floor; this.generateFloor();
@@ -447,7 +567,151 @@ class Game {
     m.rotation.x=Math.PI/2; scene.add(m); proj.mesh=m;
     this.projectiles.push(proj);
   }
-  hitEnemy(e,dmg){ /* Phase 1 placeholder */ }
+  hitEnemy(e,dmg){
+    if(e.dead)return;
+    const crit=Math.random()< (0.08+this.player.dex*0.005);
+    const fin=Math.round(dmg*(crit?2:1));
+    e.hp-=fin; e.hitFlash=0.12;
+    this.spawnDamageText(e.x,e.z,fin,crit?'#ffd24a':'#ffffff');
+    this.spawnParticles(e.x,e.z,0xff5544,6);
+    e.updateBar();
+    if(e.hp<=0) this.killEnemy(e);
+  }
+  killEnemy(e){
+    e.dead=true;
+    this.spawnParticles(e.x,e.z,e.def.color,18);
+    scene.remove(e.mesh);
+    // loot drop
+    this.addLoot(e.x,e.z, this.floor, e.isBoss);
+    // xp
+    const p=this.player; const gain=Math.round(e.xp*(1+(this.floor-1)*0.05));
+    p.xp+=gain; this.toast('+'+gain+' XP'); this.checkLevel();
+  }
+  checkLevel(){
+    const p=this.player;
+    while(p.xp>=p.xpNext){ p.xp-=p.xpNext; p.level++; p.xpNext=Math.round(p.xpNext*1.35);
+      p.maxHp+=12; p.hp=p.maxHp; p.maxMp+=6; p.mp=p.maxMp;
+      p.baseDmg+=2; p.toast?0:0;
+      this.spawnParticles(p.x,p.z,0xffcf6b,26);
+      this.toast('LEVEL UP! Lv.'+p.level);
+    }
+  }
+  damagePlayer(amount){
+    const p=this.player; if(p.invuln>0)return;
+    const mitig=Math.max(0.15, 1 - p.def*0.03);
+    const dmg=Math.round(amount*mitig);
+    p.hp-=dmg; p.invuln=0.5; p.hitFlash=0.12;
+    this.spawnParticles(p.x,p.z,0xff2222,8);
+    this.spawnDamageText(p.x,p.z-0.5,dmg,'#ff5555');
+    if(p.hp<=0){ p.hp=0; this.gameOver(); }
+  }
+  gameOver(){
+    this.state='dead';
+    const el=document.getElementById('gameover'); el.classList.remove('hidden');
+    document.getElementById('deathStats').innerHTML=
+      `You reached <b>Floor ${this.floor}</b> as a ${this.cls.name}.<br>`+
+      `Level <b>${this.player.level}</b> · Slain many foes.<br>`+
+      `Final build: STR ${this.player.str} / DEX ${this.player.dex} / INT ${this.player.int}`;
+    this.toast('You have fallen...');
+  }
+  spawnParticles(x,z,color,n){
+    for(let i=0;i<n;i++){
+      const m=box(0.12,0.12,0.12,mat(color,{emissive:color,emissiveIntensity:.6}));
+      m.position.set(x,0.6,z);
+      const vx=(Math.random()-.5)*4, vy=2+Math.random()*3, vz=(Math.random()-.5)*4;
+      scene.add(m); this.particles.push({mesh:m,vx,vy,vz,life:0.6});
+    }
+  }
+  spawnDamageText(x,z,val,color){
+    const el=document.createElement('div'); // lightweight: skip DOM floaters for perf, use particle flash
+  }
+  addLoot(x,z,floor,boss){
+    const n=boss?3:1+Math.floor(Math.random()*2);
+    for(let i=0;i<n;i++){
+      const types=['potion','gold','rune'];
+      const t=types[Math.floor(Math.random()*types.length)];
+      const m=t==='gold'?box(0.3,0.3,0.3,mat(PALETTE.gold,{emissive:0x6a4a00,emissiveIntensity:.4,metalness:.6,roughness:.3}))
+        : t==='rune'?box(0.32,0.32,0.32,mat(0x6fa8dc,{emissive:0x2244aa,emissiveIntensity:.5}))
+        : cyl(0.16,0.16,0.4,mat(0xc0392b,{emissive:0x440000,emissiveIntensity:.3}));
+      m.position.set(x+(Math.random()-.5),0.3,z+(Math.random()-.5)); m.castShadow=true; scene.add(m);
+      this.loot.push({x,y:0.3,z,t,mesh:m,bob:Math.random()*6});
+    }
+  }
+  updateEnemies(dt){
+    const p=this.player;
+    for(const e of this.enemies){
+      if(e.dead)continue;
+      // hit flash
+      if(e.hitFlash>0){ e.hitFlash-=dt; e.mesh.traverse(o=>{if(o.isMesh)o.material.emissiveIntensity=(o.material.emissive.getHex()? (e.hitFlash>0?1.2:0):0);}); }
+      const dx=p.x-e.x, dz=p.z-e.z, d=Math.hypot(dx,dz)||1;
+      const nx=dx/d, nz=dz/d;
+      // movement: chase, keep atkRange distance for ranged
+      let mvx=0,mvz=0;
+      if(e.def.kind==='ranged'){ if(d>e.atkRange-1){ mvx=nx; mvz=nz; } else if(d<4){ mvx=-nx; mvz=-nz; } else { mvx=-nz*e.strafe; mvz=nx*e.strafe; } }
+      else { if(d>e.atkRange){ mvx=nx; mvz=nz; } }
+      const sp=e.speed*(e.def.float?1.1:1);
+      const tx=e.x+mvx*sp*dt, tz=e.z+mvz*sp*dt;
+      if(this.dungeon.walkable(Math.round(tx/TILE),Math.round(tz/TILE))){ e.x=tx; e.z=tz; }
+      e.mesh.position.set(e.x, e.def.float?0.4+Math.sin(this.time*3+e.animT)*0.1:0, e.z);
+      // face player
+      e.mesh.rotation.y=Math.atan2(nx,nz);
+      // walk anim
+      e.animT+=dt*8; const sw=Math.sin(e.animT)*0.5*(mvx||mvz?1:0.15);
+      if(e.mesh.userData.legL){ e.mesh.userData.legL.rotation.x=sw; e.mesh.userData.legR.rotation.x=-sw; }
+      if(e.def.type==='demon'&&e.mesh.userData.wings){ const f=Math.sin(this.time*8)*0.4; e.mesh.userData.wings[0].rotation.z=0.5+f; e.mesh.userData.wings[1].rotation.z=-0.5-f; }
+      // attack
+      e.cd-=dt;
+      if(d<e.atkRange && e.cd<=0){
+        e.cd=e.def.kind==='ranged'?2.2:1.1;
+        if(e.def.kind==='ranged'){
+          const proj={x:e.x,y:0.8,z:e.z,vx:nx*9,vz:nz*9,life:3,dmg:e.dmg*0.7,enemy:true,
+            mesh:cyl(0.16,0.16,0.5,mat(0x8a2be2,{emissive:0x6a00aa,emissiveIntensity:1.2}))};
+          proj.mesh.rotation.x=Math.PI/2; scene.add(proj.mesh); this.projectiles.push(proj);
+        } else {
+          // lunge
+          if(e.mesh.userData.armR) e.mesh.userData.armR.rotation.x=-1.2;
+          this.damagePlayer(e.dmg);
+        }
+      }
+      if(e.mesh.userData.armR) e.mesh.userData.armR.rotation.x*=0.9;
+    }
+    // remove dead
+    this.enemies=this.enemies.filter(e=>!e.dead);
+  }
+  updateProjectiles(dt){
+    for(const pr of this.projectiles){
+      pr.x+=pr.vx*dt; pr.z+=pr.vz*dt; pr.life-=dt;
+      if(pr.mesh) pr.mesh.position.set(pr.x, pr.y||0.8, pr.z);
+      // collision
+      if(pr.enemy){
+        if(Math.hypot(pr.x-this.player.x,pr.z-this.player.z)<1.0){ this.damagePlayer(pr.dmg); pr.life=0; this.spawnParticles(pr.x,pr.z,0x8a2be2,8); }
+      } else {
+        for(const e of this.enemies){ if(e.dead)continue;
+          if(Math.hypot(pr.x-e.x,pr.z-e.z)<0.9*e.def.size){ this.hitEnemy(e,pr.dmg); pr.life=0; this.spawnParticles(pr.x,pr.z,0xff7722,8); break; } }
+      }
+      if(pr.life<=0 || !this.dungeon.walkable(Math.round(pr.x/TILE),Math.round(pr.z/TILE))){ pr.life=0; }
+    }
+    this.projectiles=this.projectiles.filter(pr=>{ if(pr.life<=0){ if(pr.mesh)scene.remove(pr.mesh); return false; } return true; });
+  }
+  updateParticles(dt){
+    for(const pt of this.particles){ pt.vy-=12*dt; pt.mesh.position.x+=pt.vx*dt; pt.mesh.position.y+=pt.vy*dt; pt.mesh.position.z+=pt.vz*dt; pt.life-=dt; pt.mesh.scale.multiplyScalar(0.94); }
+    this.particles=this.particles.filter(pt=>{ if(pt.life<=0){ scene.remove(pt.mesh); return false; } return true; });
+  }
+  updateLoot(dt){
+    for(const l of this.loot){ l.bob+=dt*3; if(l.mesh) l.mesh.position.y=0.3+Math.sin(l.bob)*0.12; }
+  }
+  pickupLoot(){
+    const p=this.player;
+    for(let i=this.loot.length-1;i>=0;i--){ const l=this.loot[i];
+      if(Math.hypot(l.x-p.x,l.z-p.z)<1.1){
+        if(l.t==='potion'){ p.potions[0]=Math.min(9,p.potions[0]+1); this.toast('+ Health Potion'); }
+        else if(l.t==='gold'){ this.gold=(this.gold||0)+ (5+Math.floor(Math.random()*15)); this.toast('+ Gold'); }
+        else if(l.t==='rune'){ p.baseDmg+=1; this.toast('A rune empowers your strike (+1 dmg)'); }
+        this.spawnParticles(l.x,l.z,0xffcf6b,6);
+        if(l.mesh)scene.remove(l.mesh); this.loot.splice(i,1);
+      }
+    }
+  }
   toast(t){ const el=document.getElementById('msg'); el.textContent=t; el.style.opacity=1;
     clearTimeout(this._tt); this._tt=setTimeout(()=>el.style.opacity=0,1800); }
   updateHUD(){

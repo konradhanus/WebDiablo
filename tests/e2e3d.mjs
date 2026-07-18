@@ -60,6 +60,16 @@ try{
   await page.waitForTimeout(120);
   await page.evaluate(()=>{ window.game.keys['KeyF']=false; });
   check('fireball spawns projectile', await page.evaluate(()=>window.game.projectiles.length>=1));
+  // ===== Faza 1: enemies + combat =====
+  check('enemies spawn on floor', await page.evaluate(()=>{ const g=window.game; return g.enemies.length>0; }));
+  check('enemy has humanoid mesh + hp bar', await page.evaluate(()=>{ const e=window.game.enemies[0]; return e&&e.mesh&&e.mesh.userData&&e.mesh.userData.legL&&e.hpBar; }));
+  // kill an enemy via hitEnemy -> loot + xp
+  const beforeLoot=await page.evaluate(()=>window.game.loot.length);
+  await page.evaluate(()=>{ const g=window.game; const e=g.enemies.find(x=>!x.isBoss)||g.enemies[0]; const hp0=e.hp; for(let i=0;i<30;i++)g.hitEnemy(e, 999); });
+  check('enemy dies + drops loot', await page.evaluate((bl)=>{ const g=window.game; return g.loot.length>bl; }, beforeLoot));
+  check('player takes damage from enemy', await page.evaluate(()=>{ const g=window.game; const p=g.player; const hp0=p.hp; g.damagePlayer(20); return p.hp < p.maxHp; }));
+  check('level up works', await page.evaluate(()=>{ const g=window.game; const p=g.player; p.xp=99999; g.checkLevel(); return p.level>=2; }));
+  check('zero errors during combat', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
   check('zero errors during play', cerr.length===0 && perr.length===0, (cerr.concat(perr)).join(' | '));
   // floor descent reachable
   check('can descend to next floor', await page.evaluate(()=>{
