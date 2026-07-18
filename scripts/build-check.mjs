@@ -32,13 +32,16 @@ if (!/id=['"]versionBar['"]|id='versionBar'|versionBar/.test(html)) errors.push(
 else ok.push('Version footer bar present');
 
 // 4. Every getElementById('X') has a matching id="X" in the HTML
+//    (dynamic ids created at runtime via JS are whitelisted by prefix)
+const DYNAMIC_ID_PREFIXES = ['skill-']; // skill bar slots built in buildSkillBar()
+const isDynamic = (id) => DYNAMIC_ID_PREFIXES.some(p => id.startsWith(p));
 const scriptStart = html.indexOf('<script>');
 const htmlPart = html.slice(0, scriptStart);
 const definedIds = new Set([...html.matchAll(/\bid=["']([^"']+)["']/g)].map(m => m[1]));
 const refIds = new Set([...html.matchAll(/getElementById\(['"]([^'"]+)['"]\)/g)].map(m => m[1]));
-const missing = [...refIds].filter(id => !definedIds.has(id));
+const missing = [...refIds].filter(id => !definedIds.has(id) && !isDynamic(id));
 if (missing.length) errors.push(`getElementById refers to missing DOM ids: ${missing.join(', ')}`);
-else ok.push(`All ${refIds.size} getElementById refs resolve to existing ids`);
+else ok.push(`All ${[...refIds].filter(id=>!isDynamic(id)).length} static getElementById refs resolve`);
 
 // 5. Script body must parse as JS (syntax check via vm compile, no execution)
 const bodyMatch = html.match(/<script>([\s\S]*?)<\/script>/);

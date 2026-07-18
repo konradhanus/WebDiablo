@@ -151,12 +151,12 @@ try {
   // --- Feature 003: XP Bar ---
   await page.evaluate(() => { if(window.game.state!=='playing')window.game.start(); window.game.player.xp = 50; window.game.player.xpNext = 100; window.game.updateUI(); });
   const xp = await page.evaluate(() => ({
-    pct: parseFloat(document.getElementById('xpBar').style.width),
-    txt: document.getElementById('xpText').textContent,
+    pct: parseFloat(document.getElementById('xpBarHud').style.width),
+    txt: document.getElementById('levelNum').textContent,
     prog: window.game.getProgress()
   }));
   check('XP bar fills ~50% at half xp', xp.pct > 45 && xp.pct < 55, 'width=' + xp.pct + '%');
-  check('XP text shows xp/xpNext', xp.txt === '50/100', xp.txt);
+  check('level badge shows level', /^\d+$/.test(xp.txt), 'level=' + xp.txt);
   check('getProgress returns pct 50', Math.abs(xp.prog.pct - 50) < 1, 'pct=' + xp.prog.pct);
   check('no errors after xp update', consoleErrors.length === 0 && pageErrors.length === 0);
 
@@ -288,8 +288,37 @@ try {
   check('wave clear grants bonus XP', waves.xpAfter > waves.xpBefore, `xp ${waves.xpBefore} -> ${waves.xpAfter}`);
   check('cleared banner shown', /WAVE CLEARED/.test(waves.banner), 'banner=' + waves.banner);
   check('no errors after waves', consoleErrors.length === 0 && pageErrors.length === 0);
+
+  // --- Feature 016: HUD Rework ---
+  const hud = await page.evaluate(() => {
+    if (window.game.state !== 'playing') window.game.start();
+    const g = window.game;
+    g.buildSkillBar && g.buildSkillBar();
+    const hpOrb = document.getElementById('hpOrbFill');
+    const mpOrb = document.getElementById('mpOrbFill');
+    const skillBar = document.getElementById('skillBar');
+    const slotCount = skillBar ? skillBar.children.length : 0;
+    const skill0 = document.getElementById('skill-0');
+    const cdEl = skill0 ? skill0.querySelector('.skill-cd') : null;
+    g.player.mp = 100; g.fireballCd = 0; g.castFireball();
+    const cdAfterCast = g.fireballCd;
+    g.updateSkillBar && g.updateSkillBar();
+    const fbCooling = skill0 ? skill0.classList.contains('cooling') : false;
+    const cdHeight = cdEl ? cdEl.style.height : 'n/a';
+    return { hpOrbExists: !!hpOrb, mpOrbExists: !!mpOrb, slotCount, cdAfterCast, fbCooling, cdHeight,
+             skill0Exists: !!skill0, cdElExists: !!cdEl };
+  });
+  check('HP orb element exists', hud.hpOrbExists, 'hpOrb=' + hud.hpOrbExists);
+  check('MP orb element exists', hud.mpOrbExists, 'mpOrb=' + hud.mpOrbExists);
+  check('skill bar has 5 slots', hud.slotCount === 5, 'slots=' + hud.slotCount);
+  check('skill-0 exists', hud.skill0Exists, 'skill0=' + hud.skill0Exists);
+  check('skill-0 .skill-cd exists', hud.cdElExists, 'cdEl=' + hud.cdElExists);
+  check('fireball sets cooldown', hud.cdAfterCast > 0, 'cd=' + hud.cdAfterCast);
+  check('fireball slot shows cooling', hud.fbCooling === true, 'cooling=' + hud.fbCooling);
+  check('cooldown overlay has height', /%/.test(hud.cdHeight) && hud.cdHeight !== '0%', 'cdHeight=' + hud.cdHeight);
+  check('no errors after HUD', consoleErrors.length === 0 && pageErrors.length === 0);
 } catch (e) {
-  check('E2E run completed without throwing', false, e.message);
+  check('E2E run completed without throwing', false, e.message + '\n' + (e.stack||''));
 } finally {
   await browser.close();
   server.close();

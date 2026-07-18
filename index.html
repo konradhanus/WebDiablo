@@ -99,6 +99,43 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 #waveBanner{position:absolute;top:32%;left:50%;transform:translate(-50%,-50%) scale(.6);z-index:60;font-family:'Cinzel',Georgia,serif;font-size:48px;font-weight:900;color:#ff4422;text-shadow:0 0 20px #ff0000,3px 3px 0 #330000;opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;text-align:center}
 #waveBanner.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 #waveBanner.clear{color:#ffdd44;text-shadow:0 0 20px #ffaa00,3px 3px 0 #332200}
+/* ===== Feature 016: HUD rework (dark-fantasy Diablo) ===== */
+#topBar{position:absolute;top:10px;left:10px;z-index:10;display:flex;flex-direction:column;gap:6px}
+#orbCluster{display:flex;align-items:flex-end;gap:10px}
+.orb{position:relative;width:62px;height:62px;border-radius:50%;overflow:hidden;border:3px solid #2a1a0e;
+  box-shadow:inset 0 0 12px rgba(0,0,0,.8),0 0 8px rgba(0,0,0,.6);background:#0d0805}
+.orb.hp{background:radial-gradient(circle at 50% 30%,#5a0a0a,#1a0303)}
+.orb.mp{background:radial-gradient(circle at 50% 30%,#0a2a5a,#031330)}
+.orb .orb-fill{position:absolute;left:0;bottom:0;width:100%;height:100%;transition:height .15s ease-out}
+.orb.hp .orb-fill{background:linear-gradient(180deg,#ff3b30,#b30000)}
+.orb.mp .orb-fill{background:linear-gradient(180deg,#3b82ff,#0033b3)}
+.orb .orb-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:monospace;font-size:12px;font-weight:bold;color:#fff;text-shadow:1px 1px 2px #000;z-index:2}
+.orb .orb-label{position:absolute;top:3px;left:0;right:0;text-align:center;font-family:Georgia,serif;
+  font-size:9px;letter-spacing:1px;color:#ffd9a0;text-shadow:1px 1px 2px #000;z-index:2;opacity:.8}
+#xpWrap{display:flex;flex-direction:column;gap:3px;margin-bottom:6px}
+.xp-track{width:150px;height:8px;background:#1a120a;border:1px solid #3a2a1a;border-radius:4px;overflow:hidden}
+.xp-fill{height:100%;background:linear-gradient(90deg,#ffb347,#ffdd55);transition:width .2s}
+.lvl-badge{align-self:flex-start;font-family:Georgia,serif;font-size:12px;color:#ffd700;
+  text-shadow:1px 1px 2px #000;border:1px solid #5a3a1a;border-radius:4px;padding:0 6px;background:rgba(0,0,0,.5)}
+#skillBar{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:20;display:flex;gap:8px}
+.skill{position:relative;width:54px;height:54px;border-radius:8px;border:2px solid #5a3a1a;
+  background:linear-gradient(180deg,#3a2a1a,#1a120a);cursor:pointer;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 0 6px rgba(0,0,0,.6)}
+.skill:hover{border-color:#ff8800;box-shadow:0 0 10px rgba(255,136,0,.5)}
+.skill .skill-icon{font-size:26px;filter:drop-shadow(1px 1px 1px #000)}
+.skill .skill-key{position:absolute;bottom:2px;right:4px;font-family:monospace;font-size:10px;color:#ffd9a0}
+.skill .skill-cd{position:absolute;left:0;bottom:0;width:100%;background:rgba(0,0,0,.72);height:0%;
+  transition:height .1s linear;pointer-events:none}
+.skill.cooling{filter:grayscale(.6)}
+.minimap-canvas{position:fixed;top:12px;right:12px;width:150px;height:150px;border:3px solid #6b4a22;
+  border-radius:8px;background:#000;z-index:50;box-shadow:0 0 16px rgba(0,0,0,.7),inset 0 0 12px rgba(0,0,0,.8)}
+#statsPanel h3,#equipPanel h3,#equipPanel .eq-title,#settingsPanel h3{font-family:Georgia,'Times New Roman',serif;
+  color:#ffd9a0;letter-spacing:1px;text-shadow:1px 1px 2px #000}
+.equip-slot{border:2px solid #5a3a1a;background:linear-gradient(180deg,#2a1d12,#160e07);border-radius:6px;
+  box-shadow:inset 0 0 6px rgba(0,0,0,.7)}
+.equip-slot.filled{border-color:#7a5a2a;box-shadow:0 0 8px rgba(255,170,0,.3)}
+.equip-slot:hover{border-color:#ff8800}
 #squadBtns{position:absolute;bottom:92px;right:12px;z-index:10;display:flex;gap:6px}
 #squadBtns button{padding:6px 10px;font-size:11px;font-family:monospace;background:linear-gradient(180deg,#3a1a0a,#2a0a00);color:#ffd700;border:1px solid #5a3a1a;border-radius:4px;cursor:pointer}
 #squadBtns button:hover{box-shadow:0 0 8px rgba(255,136,0,.4)}
@@ -110,14 +147,24 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
 </head>
 <body>
 <canvas id="gameCanvas"></canvas>
-<canvas id="minimap" width="160" height="160" style="position:fixed;top:12px;right:12px;width:160px;height:160px;border:2px solid #5a3a1a;border-radius:6px;background:#000;z-index:50;box-shadow:0 0 12px rgba(0,0,0,.6)"></canvas>
+<canvas id="minimap" width="160" height="160" class="minimap-canvas"></canvas>
 <div id="ui">
   <!-- Old top bar hidden, replaced by equipTop + hudBottom -->
   <div id="topBar">
-    <div class="bar-container"><div class="bar-fill hp-fill" id="hpBar" style="width:100%"></div><div class="bar-text" id="hpText">100/100</div></div>
-    <div class="bar-container"><div class="bar-fill mp-fill" id="mpBar" style="width:100%"></div><div class="bar-text" id="mpText">50/50</div></div>
-    <div class="bar-container"><div class="bar-fill xp-fill" id="xpBar" style="width:0%"></div><div class="bar-text" id="xpText">0/100</div></div>
-    <div id="levelDisplay">Lv. <span id="levelNum">1</span></div>
+    <!-- HP / MP orbs (Feature 016) -->
+    <div id="orbCluster">
+      <div id="hpOrb" class="orb hp">
+        <div class="orb-fill" id="hpOrbFill"></div>
+        <span class="orb-num" id="hpOrbText">100/100</span>
+        <span class="orb-label">HP</span>
+      </div>
+      <div id="mpOrb" class="orb mp">
+        <div class="orb-fill" id="mpOrbFill"></div>
+        <span class="orb-num" id="mpOrbText">50/50</span>
+        <span class="orb-label">MP</span>
+      </div>
+      <div id="xpWrap"><div class="xp-track"><div id="xpBarHud" class="xp-fill" style="width:0%"></div></div><span id="levelNum" class="lvl-badge">1</span></div>
+    </div>
   </div>
   <!-- Equipment slots on top -->
   <div id="equipTop">
@@ -225,11 +272,12 @@ body{background:#000;overflow:hidden;font-family:'Segoe UI',Georgia,serif;color:
     <button id="recruitBtn" title="Recruit mercenary (Q)">+ Squad (Q)</button>
     <button id="holdBtn" title="Toggle hold position (R)">Hold (R)</button>
   </div>
+  <div id="skillBar"></div>
 </div>
 
 <script>
 // ==================== VERSION (single source of truth) ====================
-const GAME_VERSION = '1.7.0';
+const GAME_VERSION = '1.8.0';
 // ==================== CREDITS (landing page) ====================
 const CREATOR = 'Konrad Hanus';
 const CREATED = 'July 2026';
@@ -652,6 +700,7 @@ class Game {
     this.squadHold=false; // Feature 013: hold-position toggle
     this.carnage={kills:0,streak:0,streakTimer:0}; // Feature 014: bloodlust meter
     this.wave={num:0,timer:25,active:false,toSpawn:0,spawnCd:0}; // Feature 015: horde waves
+    this.fireballCd=0; // Feature 016: skill bar cooldown
     this.time=0;
   }
   start(){
@@ -676,6 +725,7 @@ class Game {
     ];
     this.generateFloor();
     this.updateUI();
+    this.buildSkillBar(); // Feature 016: build skill bar once
     this.lastTime=performance.now();
   }
   continue(){
@@ -800,6 +850,7 @@ class Game {
     for(let i=this.bloods.length-1;i>=0;i--){this.bloods[i].age+=dt;if(this.bloods[i].age>22)this.bloods.splice(i,1);}
     // Feature 014: bloodlust streak decay
     if(this.carnage.streakTimer>0){this.carnage.streakTimer-=dt;if(this.carnage.streakTimer<=0)this.carnage.streak=0;}
+    if(this.fireballCd>0)this.fireballCd-=dt; // Feature 016: fireball cooldown
     if(this.shakeTimer>0)this.shakeTimer-=dt;
   }
   updatePlayer(dt){
@@ -1025,6 +1076,48 @@ class Game {
       el.textContent=`WAVE ${this.wave.num} — ${left>0?('INCOMING '+left):'FIGHT!'}`;
     }else{
       el.textContent=`WAVE ${this.wave.num} · next ${Math.ceil(this.wave.timer)}s`;
+    }
+  }
+  // ==================== SKILL BAR (Feature 016) ====================
+  buildSkillBar(){
+    const bar=document.getElementById('skillBar');
+    if(!bar)return;
+    if(bar.children.length)return; // build once
+    const slots=[
+      {icon:'🔥',key:'F',name:'Fireball',act:()=>this.castFireball()},
+      {icon:'🧪',key:'1',name:'Potion',act:()=>this.usePotion(0)},
+      {icon:'🧪',key:'2',name:'Potion',act:()=>this.usePotion(1)},
+      {icon:'🧪',key:'3',name:'Potion',act:()=>this.usePotion(2)},
+      {icon:'🧪',key:'4',name:'Potion',act:()=>this.usePotion(3)}
+    ];
+    this._skillSlots=slots;
+    for(let i=0;i<slots.length;i++){
+      const s=slots[i];
+      const b=document.createElement('button');
+      b.className='skill';
+      b.id='skill-'+i;
+      b.title=s.name+' ('+s.key+')';
+      b.innerHTML=`<span class="skill-icon">${s.icon}</span><span class="skill-key">${s.key}</span><span class="skill-cd"></span>`;
+      b.addEventListener('click',s.act);
+      bar.appendChild(b);
+    }
+  }
+  updateSkillBar(){
+    const bar=document.getElementById('skillBar');
+    if(!bar||!this._skillSlots)return;
+    const fb=document.getElementById('skill-0');
+    if(fb){
+      const cd=document.querySelector('#skill-0 .skill-cd');
+      if(cd){
+        const pct=Math.max(0,Math.min(1,this.fireballCd/0.6))*100;
+        cd.style.height=pct+'%';
+      }
+      fb.classList.toggle('cooling',this.fireballCd>0);
+    }
+    // Potion slots grey out when empty
+    for(let i=1;i<this._skillSlots.length;i++){
+      const slot=document.getElementById('skill-'+i);
+      if(slot)slot.classList.toggle('cooling',this.player.potions<i);
     }
   }
   hitEnemy(e,dmg){
@@ -1412,14 +1505,12 @@ class Game {
   }
   updateUI(){
     const p=this.player;
-    // Old bars (hidden but still updated for compatibility)
-    document.getElementById('hpBar').style.width=(p.hp/p.maxHp*100)+'%';
-    document.getElementById('hpText').textContent=`${Math.floor(p.hp)}/${p.maxHp}`;
-    document.getElementById('mpBar').style.width=(p.mp/p.maxMp*100)+'%';
-    document.getElementById('mpText').textContent=`${Math.floor(p.mp)}/${p.maxMp}`;
-    document.getElementById('xpBar').style.width=(p.xp/p.xpNext*100)+'%';
-    document.getElementById('xpText').textContent=`${p.xp}/${p.xpNext}`;
-    document.getElementById('levelNum').textContent=p.level;
+    // Feature 016: HUD orbs (replaced old bars)
+    document.getElementById('hpOrbFill').style.height=(p.hp/p.maxHp*100)+'%';
+    document.getElementById('hpOrbText').textContent=`${Math.floor(p.hp)}/${p.maxHp}`;
+    document.getElementById('mpOrbFill').style.height=(p.mp/p.maxMp*100)+'%';
+    document.getElementById('mpOrbText').textContent=`${Math.floor(p.mp)}/${p.maxMp}`;
+    document.getElementById('xpBarHud').style.width=(p.xp/p.xpNext*100)+'%';
     document.getElementById('statStr').textContent=p.str;
     document.getElementById('statDex').textContent=p.dex;
     document.getElementById('statInt').textContent=p.int;
@@ -1513,10 +1604,12 @@ class Game {
       <div>MP Regen: ${p.manaRegen.toFixed(1)}/s</div>`;
   }
   castFireball(){
+    if(this.fireballCd>0)return; // Feature 016: cooldown gate
     const p=this.player;
     const cost=15;
     if(p.mp<cost){this.logMsg('Not enough mana!','#4488ff');return}
     p.mp-=cost;
+    this.fireballCd=0.6; // Feature 016: cooldown
     // Find direction from mouse
     const mx=this.mouse.x-canvas.width/2;
     const my=this.mouse.y-canvas.height/2;
@@ -1590,6 +1683,7 @@ class Game {
   hideTooltip(){document.getElementById('tooltip').style.display='none'}
   render(){
     if(!this.dungeon||this.state!=='playing')return;
+    this.updateSkillBar(); // Feature 016: per-frame cooldown sweep
     ctx.fillStyle='#0a0505';ctx.fillRect(0,0,canvas.width,canvas.height);
     const camX=this.camera.x+Math.sin(this.time*3)*this.shakeIntensity;
     const camY=this.camera.y+Math.cos(this.time*3)*this.shakeIntensity;
