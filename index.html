@@ -726,9 +726,11 @@ class Game {
     if(this.touch.aim){ this.aim.x=this.touch.aim.x; this.aim.z=this.touch.aim.y;
       p.dir=Math.abs(this.aim.x)>Math.abs(this.aim.z)?(this.aim.x>0?1:3):(this.aim.z>0?2:0); }
     else this.updateAim();
-    // rotate player to face aim
+    // rotate player to face aim.
+    // Our GLTF models (soldier/xbot/etc.) have their "front" facing local -Z,
+    // so we add PI to atan2 to make the model face the cursor instead of its back.
     this.mesh.position.set(p.x,0,p.z);
-    const ang=Math.atan2(this.aim.x,this.aim.z);
+    const ang=Math.atan2(this.aim.x,this.aim.z)+Math.PI;
     this.mesh.rotation.y=ang;
     this.animateHumanoid(dt);
     // attacks
@@ -838,7 +840,7 @@ class Game {
       const dx=tx-a.x, dz=tz-a.z, dl=Math.hypot(dx,dz)||1;
       if(dl>0.3){ const sp=5.5*dt; a.x+=dx/dl*Math.min(sp,dl); a.z+=dz/dl*Math.min(sp,dl); }
       a.mesh.position.set(a.x,0,a.z);
-      a.mesh.rotation.y=Math.atan2(dx,dz);
+      a.mesh.rotation.y=Math.atan2(dx,dz)+Math.PI;
       a.cd-=dt;
       if(near && nd<2.0 && a.cd<=0){ a.cd=0.7;
         if(a.mesh.userData.armR)a.mesh.userData.armR.rotation.x=-1.3;
@@ -956,7 +958,7 @@ class Game {
       const moving=(mvx||mvz);
       const yBase=e.float?1.6:0;
       e.mesh.position.set(e.x, yBase + (e.float?Math.sin(this.time*3+e.animT)*0.12:0), e.z);
-      e.mesh.rotation.y=Math.atan2(nx,nz);
+      e.mesh.rotation.y=Math.atan2(nx,nz)+Math.PI;
       // animation: crossfade walk<->idle, trigger attack
       e.mixer.update(dt);
       const A=e.actions;
