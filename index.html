@@ -162,6 +162,7 @@
 <script type="module">
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/jsm/loaders/GLTFLoader.js';
+import { clone as skeletalClone } from './vendor/jsm/utils/SkeletonUtils.js';
 
 const GAME_VERSION = '3.4.0';
 
@@ -175,6 +176,18 @@ const MODEL_URLS = {
   parrot:   './vendor/models/parrot.glb',
   stork:    './vendor/models/stork.glb',
   horse:    './vendor/models/horse.glb',
+};
+// Native model heights vary wildly (soldier ~1.8, flamingo ~416). These baseScale
+// values bring every model to ~2.2 world units tall (2.2 / nativeHeight).
+const MODEL_BASE_SCALE = {
+  soldier:  2.2/1.83,
+  xbot:     2.2/1.81,
+  robot:    2.2/4.79,
+  michelle: 2.2/1.66,
+  flamingo: 2.2/416.1,
+  parrot:   2.2/166.7,
+  stork:    2.2/168.3,
+  horse:    2.2/302.5,
 };
 const _modelCache = {};
 function loadGLTF(url){
@@ -193,7 +206,7 @@ async function buildActor(url, opts={}){
   try {
     const gltf = await loadGLTF(url);
     const src = gltf.scene || (gltf.scenes && gltf.scenes[0]);
-    const root = src.clone(true);
+    const root = skeletalClone(src);
     root.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true;
       if(opts.tint){ o.material = o.material.clone(); o.material.color && o.material.color.set(opts.tint);
         if(o.material.emissive) o.material.emissive.set(opts.tint).multiplyScalar(0.25); } } });
@@ -208,7 +221,15 @@ async function buildActor(url, opts={}){
     for(const [name,c] of [['idle',idle],['walk',walk],['run',run],['attack',attack],['death',death]]){
       if(c){ const a=mixer.clipAction(c); a.play(); a.setEffectiveWeight(name==='idle'?1:0); actions[name]=a; }
     }
-    if(opts.scale) root.scale.setScalar(opts.scale);
+    // Normalise scale: GLTF example models have wildly different native sizes.
+    // baseScale brings each model to ~2.2 world units tall (TARGET_H / nativeHeight).
+    // opts.scale is an optional per-type multiplier for relative size differences.
+    const factor = (opts.baseScale || 1) * (opts.scale || 1);
+    root.scale.setScalar(factor);
+    root.updateMatrixWorld(true);
+    // recentre so the model stands on the ground (feet at y=0) regardless of native pivot
+    const bbox2 = new THREE.Box3().setFromObject(root);
+    root.position.y -= bbox2.min.y;
     return { root, mixer, actions };
   } catch(err){
     console.warn('buildActor failed for', url, err);
@@ -275,7 +296,7 @@ scene.add(ambient);
 // ====================== HELPERS ======================
 const mat = (color, opts={}) => {
   const c = new THREE.Color(color);
-  return new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.5), emissiveIntensity:1, ...opts });
+  return new THREE.MeshStandardMaterial({ color: c, emissive: c.clone().multiplyScalar(0.5), emissiveIntensity:1, roughness:0.7, metalness:0.1, ...opts });
 };
 function box(w,h,d,m){ return new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m); }
 function cyl(rt,rb,h,m,seg=12){ return new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg), m); }
@@ -463,14 +484,15 @@ function buildCreature(type){
 
 // Map enemy types to real rigged GLTF models with animations
 function enemyModelFor(type){
+  const withBase = (url, extra={}) => ({ url, baseScale: MODEL_BASE_SCALE[Object.keys(MODEL_URLS).find(k=>MODEL_URLS[k]===url)], ...extra });
   switch(type){
-    case 'skeleton': return { url:MODEL_URLS.xbot,     tint:0xe8e4d8, scale:0.95 };
-    case 'goblin':   return { url:MODEL_URLS.michelle, tint:0x6aa84f, scale:0.62 };
-    case 'zombie':   return { url:MODEL_URLS.soldier,  tint:0x6b8e5a, scale:1.0 };
-    case 'demon':    return { url:MODEL_URLS.robot,    tint:0xb03030, scale:1.15 };
-    case 'wraith':   return { url:MODEL_URLS.flamingo, tint:0x9b6bd6, scale:1.3, float:true };
-    case 'brute':    return { url:MODEL_URLS.soldier,  tint:0x8a6a4a, scale:1.7 };
-    default:         return { url:MODEL_URLS.xbot,     tint:0xe8e4d8, scale:0.95 };
+    case 'skeleton': return withBase(MODEL_URLS.xbot,     { tint:0xe8e4d8, scale:0.95 });
+    case 'goblin':   return withBase(MODEL_URLS.michelle, { tint:0x6aa84f, scale:0.62 });
+    case 'zombie':   return withBase(MODEL_URLS.soldier,  { tint:0x6b8e5a, scale:1.0 });
+    case 'demon':    return withBase(MODEL_URLS.robot,    { tint:0xb03030, scale:1.15 });
+    case 'wraith':   return withBase(MODEL_URLS.flamingo, { tint:0x9b6bd6, scale:1.3, float:true });
+    case 'brute':    return withBase(MODEL_URLS.soldier,  { tint:0x8a6a4a, scale:1.7 });
+    default:         return withBase(MODEL_URLS.xbot,     { tint:0xe8e4d8, scale:0.95 });
   }
 }
 
@@ -490,9 +512,9 @@ class Enemy {
   }
   async init(){
     const m=enemyModelFor(this.type);
-    const actor=await buildActor(m.url,{ tint:m.tint, scale:m.scale });
+    const actor=await buildActor(m.url,{ tint:m.tint, scale:m.scale, baseScale:m.baseScale });
     this.mesh=actor.root; this.mixer=actor.mixer; this.actions=actor.actions;
-    this.mesh.position.set(this.x, m.yOffset||0, this.z);
+    this.mesh.position.set(this.x, this.mesh.position.y, this.z);
     this.float = m.float||false;
     if(this.float) this.mesh.position.y += 1.6;
     // hp bar (billboard sprite)
@@ -550,9 +572,9 @@ class Game {
       baseDmg:this.cls.dmg, def:this.cls.def, attackCd:0, invuln:0,
       potions:[1,1,0,0,0], potionCd:0, swing:0, castCd:0 };
     if(this.mesh){ scene.remove(this.mesh); }
-    const hero=await buildActor(MODEL_URLS.soldier, { tint:this.cls.color, scale:1.15 });
+    const hero=await buildActor(MODEL_URLS.soldier, { tint:this.cls.color, scale:1.15, baseScale: MODEL_BASE_SCALE.soldier });
     this.mesh=hero.root; this.heroMixer=hero.mixer; this.heroActions=hero.actions;
-    this.mesh.scale.setScalar(1.6);
+    // (scale is set inside buildActor: model normalised to ~2.2 units * opts.scale)
     // warm point light that follows the hero so the player is always clearly lit
     const plight=new THREE.PointLight(0xffe6b0, 1.4, 26, 1.6); plight.position.set(0,3.2,0); this.mesh.add(plight);
     scene.add(this.mesh);
