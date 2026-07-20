@@ -722,8 +722,11 @@ class Game {
       if(this.dungeon.walkable(Math.round(p.x/TILE),Math.round(nz/TILE))) p.z=nz;
       p.walking=true; p.animT+=dt*10;
     } else p.walking=false;
-    // aim
-    if(this.touch.aim){ this.aim.x=this.touch.aim.x; this.aim.z=this.touch.aim.y;
+    // aim: face the direction of movement when keys are used, otherwise face the cursor
+    if(ml>0.01){
+      this.aim.x=mx; this.aim.z=mz;
+      p.dir=Math.abs(mx)>Math.abs(mz)?(mx>0?1:3):(mz>0?2:0);
+    } else if(this.touch.aim){ this.aim.x=this.touch.aim.x; this.aim.z=this.touch.aim.y;
       p.dir=Math.abs(this.aim.x)>Math.abs(this.aim.z)?(this.aim.x>0?1:3):(this.aim.z>0?2:0); }
     else this.updateAim();
     // rotate player to face aim.
