@@ -230,12 +230,25 @@ async function buildActor(url, opts={}){
     // recentre so the model stands on the ground (feet at y=0) regardless of native pivot
     const bbox2 = new THREE.Box3().setFromObject(root);
     root.position.y -= bbox2.min.y;
+    // ---- weapon: a sword held in the right hand ----
+    const handR = root.getObjectByName('mixamorigRightHand') || root.getObjectByName('RightHand');
+    const armR  = root.getObjectByName('mixamorigRightArm')  || root.getObjectByName('RightArm');
+    if(handR){
+      const sword = makeSword();
+      // orient the blade so it points "forward" out of the hand and sits naturally
+      sword.position.set(0, 0.02, 0.06);
+      sword.rotation.set(Math.PI/2, 0, 0);
+      handR.add(sword);
+      root.userData.sword = sword;
+    }
+    if(armR) root.userData.armR = armR; // bone we rotate for attack/cast animations
     return { root, mixer, actions };
   } catch(err){
     console.warn('buildActor failed for', url, err);
     // fallback: simple humanoid so the game still works
     const fb = (opts.tint!==undefined) ? buildHumanoid({cloth:opts.tint}) : buildCreature('skeleton');
     const mixer = new THREE.AnimationMixer(fb);
+    if(fb.userData.armR) fb.userData.armR.rotation.set(0,0,0);
     return { root: fb, mixer, actions:{} };
   }
 }
@@ -300,6 +313,20 @@ const mat = (color, opts={}) => {
 };
 function box(w,h,d,m){ return new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m); }
 function cyl(rt,rb,h,m,seg=12){ return new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg), m); }
+
+// A simple low-poly sword: blade + guard + grip, built facing +Y (so rotating it
+// PI/2 on X makes the blade point forward out of the hand).
+function makeSword(){
+  const g = new THREE.Group();
+  const steel = mat(0xcfd6e0, { metalness:0.85, roughness:0.25, emissive:0x223044, emissiveIntensity:0.4 });
+  const gold  = mat(0xd9b25a, { metalness:0.8, roughness:0.3, emissive:0x3a2c0a, emissiveIntensity:0.4 });
+  const blade = box(0.05, 0.95, 0.018, steel); blade.position.y = 0.62; g.add(blade);
+  const tip   = new THREE.Mesh(new THREE.ConeGeometry(0.028, 0.12, 4), steel); tip.position.y = 1.16; tip.rotation.y=Math.PI/4; g.add(tip);
+  const guard = box(0.22, 0.05, 0.05, gold); guard.position.y = 0.14; g.add(guard);
+  const grip  = cyl(0.028, 0.028, 0.18, gold); grip.position.y = 0.04; g.add(grip);
+  g.traverse(o=>{ if(o.isMesh){ o.castShadow=true; } });
+  return g;
+}
 
 // World <-> screen helpers
 const worldToTile = (x,z)=>({ tx:Math.round(x/TILE), tz:Math.round(z/TILE) });
@@ -704,7 +731,7 @@ class Game {
     this.time+=dt;
     const p=this.player;
     if(p.attackCd>0)p.attackCd-=dt; if(p.castCd>0)p.castCd-=dt;
-    if(p.invuln>0)p.invuln-=dt; if(p.potionCd>0)p.potionCd-=dt; if(p.swing>0)p.swing-=dt;
+    if(p.invuln>0)p.invuln-=dt; if(p.potionCd>0)p.potionCd-=dt; if(p.swing>0)p.swing-=dt; if(p.cast>0)p.cast-=dt;
     p.mp=Math.min(p.maxMp,p.mp+ (8+p.int)*dt);
     p.hp=Math.min(p.maxHp,p.hp+ (2+ (p.level-1))*dt); // slow regen
     // movement
@@ -770,10 +797,26 @@ class Game {
     const p=this.player;
     if(this.heroMixer) this.heroMixer.update(dt);
     const A=this.heroActions;
-    if(!A)return;
-    if(p.swing>0 && A.attack){ this._playOnce(A,'attack'); }
-    else if(p.walking && A.walk){ this._cross(A,'walk','idle'); }
-    else if(A.idle){ this._cross(A,'idle','walk'); }
+    // crossfade locomotion
+    if(p.walking && A && A.walk){ this._cross(A,'walk','idle'); }
+    else if(A && A.idle){ this._cross(A,'idle','walk'); }
+    // ---- procedural arm animation layered on top of the mixer pose ----
+    const armR = this.mesh && this.mesh.userData.armR;
+    if(armR){
+      // mixer just set this frame's neutral pose; use it as the baseline
+      const base = armR.rotation.clone();
+      if(p.swing>0){            // sword slash: swing the right arm forward in an arc
+        const t = 1 - (p.swing/0.3);          // 0 -> 1 across the swing
+        const arc = Math.sin(t*Math.PI);      // 0 -> 1 -> 0
+        armR.rotation.x = base.x - 1.6 + 2.6*arc;
+        armR.rotation.z = base.z + 0.5*arc;
+      } else if(p.cast>0){      // fireball: raise the right hand to cast
+        const t = 1 - (p.cast/0.45);
+        armR.rotation.x = base.x - 1.8*t;
+        armR.rotation.z = base.z + 0.4*t;
+      }
+      // else: leave mixer pose untouched (no override)
+    }
   }
   melee(){
     const p=this.player; p.swing=0.3;
@@ -786,6 +829,8 @@ class Game {
   }
   fireball(){
     const p=this.player;
+    if(p.cast>0) return; // already casting
+    p.cast=0.45; // trigger cast animation
     const sp=14; const proj={ x:p.x+this.aim.x*1.0, z:p.z+this.aim.z*1.0,
       vx:this.aim.x*sp, vz:this.aim.z*sp, life:2.2, dmg:18+p.int*2.5 };
     const m=cyl(0.18,0.18,0.5,mat(0xff7722,{emissive:0xff5500,emissiveIntensity:1.2,roughness:.3}));
